@@ -1,0 +1,138 @@
+{
+  "tool": "debtflow",
+  "version": "0.1.0",
+  "date": "2026-10-14",
+  "environment": {
+    "go": "go1.24.1 darwin/arm64",
+    "os": "darwin/arm64",
+    "git": "2.54.0"
+  },
+  "description": "End-to-end v0.1 happy-path run against a seeded scratch repository. Three unreviewed agent commits are imported by `debtflow init`; a fourth agent commit lands stacked on the oldest entry and interest visibly rises between two `debtflow board` reads while the new commit is auto-imported; the three settle verbs (paydown, refinance, default) then close the ledger and the savepoint-tree restore leaves the working tree clean.",
+  "seed": {
+    "repository": "scratch git repository on branch main; every command below runs at its root",
+    "human_identity": "Leo Stack <leo.stack@outlook.com>",
+    "agent_identities": [
+      "Claude <claude@anthropic.com>",
+      "Cursor Agent <agent@cursor.sh>",
+      "Codex <codex@openai.com>"
+    ],
+    "commits": [
+      {
+        "hash": "a080e37eccf3",
+        "author": "Leo Stack <leo.stack@outlook.com>",
+        "date": "2026-10-11T10:00:00+08:00",
+        "subject": "chore: baseline ledger service",
+        "files": [
+          "README.md",
+          "go.mod",
+          "service/ledger.go",
+          "service/ledger_test.go",
+          "api/handler.go"
+        ]
+      },
+      {
+        "hash": "ea80b317137b",
+        "author": "Claude <claude@anthropic.com>",
+        "date": "2026-10-12T09:30:00+08:00",
+        "subject": "feat: accrue interest beyond ten items",
+        "files": [
+          "README.md",
+          "api/handler.go",
+          "service/ledger.go",
+          "service/ledger_test.go"
+        ]
+      },
+      {
+        "hash": "5c4cce760a41",
+        "author": "Cursor Agent <agent@cursor.sh>",
+        "date": "2026-10-13T10:00:00+08:00",
+        "subject": "feat: expose count over http",
+        "files": [
+          "api/routes.go",
+          "service/ledger.go"
+        ]
+      },
+      {
+        "hash": "537d8750bd73",
+        "author": "Codex <codex@openai.com>",
+        "date": "2026-10-13T16:00:00+08:00",
+        "subject": "test: cover routes and add health endpoint",
+        "files": [
+          "README.md",
+          "api/handler.go",
+          "api/routes_test.go"
+        ]
+      },
+      {
+        "hash": "d5581a8db90c",
+        "author": "Claude <claude@anthropic.com>",
+        "date": "2026-10-14T09:00:00+08:00",
+        "subject": "feat: make the interest rate a constant",
+        "files": [
+          ".gitignore",
+          "service/interest.go",
+          "service/ledger.go"
+        ],
+        "note": "lands after debtflow init; the .gitignore entry is the ledger directory line debtflow init appended"
+      }
+    ],
+    "reproduce": "examples/seed-demo-repo.sh builds the same repository shape; entry ids differ because hashes do"
+  },
+  "steps": [
+    {
+      "command": "debtflow --version",
+      "stdout": "debtflow 0.1.0"
+    },
+    {
+      "command": "debtflow init",
+      "stdout": "Imported 3 agent commit(s) as debt entries (0 already tracked)."
+    },
+    {
+      "command": "debtflow board",
+      "stdout": "╭──────────────┬─────┬───────────────────┬───────────────┬──────────────┬────────╮\n│ ENTRY        │ AGE │ DEPENDENT COMMITS │ TOUCHED FILES │ BLAST RADIUS │ STATUS │\n├──────────────┼─────┼───────────────────┼───────────────┼──────────────┼────────┤\n│ ea80b317137b │ 2d  │                 2 │             4 │            2 │ open   │\n│ 5c4cce760a41 │ 1d  │                 1 │             2 │            3 │ open   │\n│ 537d8750bd73 │ 18h │                 0 │             3 │            0 │ open   │\n╰──────────────┴─────┴───────────────────┴───────────────┴──────────────┴────────╯"
+    },
+    {
+      "command": "debtflow board",
+      "context": "after agent commit d5581a8db90c lands stacked on the oldest entry",
+      "stdout": "Auto-imported 1 new agent commit(s) as debt entries.\n╭──────────────┬─────┬───────────────────┬───────────────┬──────────────┬────────╮\n│ ENTRY        │ AGE │ DEPENDENT COMMITS │ TOUCHED FILES │ BLAST RADIUS │ STATUS │\n├──────────────┼─────┼───────────────────┼───────────────┼──────────────┼────────┤\n│ ea80b317137b │ 2d  │                 3 │             4 │            4 │ open   │\n│ 5c4cce760a41 │ 1d  │                 2 │             2 │            5 │ open   │\n│ 537d8750bd73 │ 18h │                 1 │             3 │            3 │ open   │\n│ d5581a8db90c │ 1h  │                 0 │             3 │            0 │ open   │\n╰──────────────┴─────┴───────────────────┴───────────────┴──────────────┴────────╯"
+    },
+    {
+      "command": "debtflow paydown ea80b317137b",
+      "stdout": "Entry ea80b317137b marked paid — review debt cleared."
+    },
+    {
+      "command": "debtflow refinance 5c4cce760a41 537d8750bd73",
+      "stdout": "Bundled 5c4cce760a41 and 537d8750bd73 into 88fc0922c3ea — one review now covers both changes."
+    },
+    {
+      "command": "debtflow default d5581a8db90c",
+      "stdout": "Defaulted d5581a8db90c — working tree restored to refs/debtflow/d5581a8db90c and committed."
+    },
+    {
+      "command": "debtflow board",
+      "context": "final board after the three settle verbs",
+      "stdout": "╭──────────────┬─────┬───────────────────┬───────────────┬──────────────┬────────────╮\n│ ENTRY        │ AGE │ DEPENDENT COMMITS │ TOUCHED FILES │ BLAST RADIUS │ STATUS     │\n├──────────────┼─────┼───────────────────┼───────────────┼──────────────┼────────────┤\n│ ea80b317137b │ 2d  │                 3 │             4 │            4 │ paid       │\n│ 5c4cce760a41 │ 1d  │                 2 │             2 │            5 │ refinanced │\n│ 88fc0922c3ea │ 1d  │                 2 │             5 │            2 │ open       │\n│ 537d8750bd73 │ 18h │                 1 │             3 │            3 │ refinanced │\n│ d5581a8db90c │ 1h  │                 0 │             3 │            0 │ defaulted  │\n╰──────────────┴─────┴───────────────────┴───────────────┴──────────────┴────────────╯"
+    },
+    {
+      "command": "git status --porcelain --untracked-files=no",
+      "stdout": ""
+    },
+    {
+      "command": "git log --oneline -3",
+      "stdout": "91d4f5d debtflow: default entry d5581a8db90c\nd5581a8 feat: make the interest rate a constant\n537d875 test: cover routes and add health endpoint"
+    }
+  ],
+  "observations": [
+    "Interest accrues between runs without a separate command: between the two board reads the oldest entry ea80b317137b rose from 2 dependent commits / blast radius 2 to 3 / 4, entry 5c4cce760a41 from 1 / 3 to 2 / 5, and entry 537d8750bd73 from 0 / 0 to 1 / 3.",
+    "The new agent commit d5581a8db90c was auto-imported as a fresh open row by `debtflow board` itself — no separate init needed once the ledger exists.",
+    "`debtflow refinance 5c4cce760a41 537d8750bd73` marked both source entries refinanced and opened bundle 88fc0922c3ea covering their combined file set (5 touched files).",
+    "`debtflow default d5581a8db90c` restored the recorded pre-change tree refs/debtflow/d5581a8db90c and committed it; the working tree was left clean (empty git status output above).",
+    "The final board shows all four ledger states at once: one paid entry, two refinanced sources, the still-open bundle accruing interest, and one defaulted entry."
+  ],
+  "limitations": [
+    "v0.1 is a local single-repo ledger: the JSONL file lives at .debtflow/ledger.jsonl and is never committed; there is no sync, shared view or debt assignment (that is the planned v0.2 team ledger server).",
+    "Interest is recomputed from local git history only — it is deterministic git-graph math, so it never judges code quality, only liability.",
+    "Agent detection is case-insensitive substring matching on author name/email and Co-Authored-By trailers (default: claude, codex, cursor); narrow it with debtflow init --agents when a human name would collide.",
+    "`debtflow default` restores the savepoint tree wholesale: commits stacked on the defaulted entry are discarded along with it."
+  ]
+}
