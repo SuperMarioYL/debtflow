@@ -1,0 +1,23 @@
+# build scratch
+PUBLISH_BLOCKED.md
+BUILD_SETUP_NEXT_STEPS.md
+.spawn.*
+.builder_*
+.build_metadata*
+.stage*
+_build_ctx.json
+assemble_builder_prompt.sh
+
+# local assistant config
+.claude/
+CLAUDE.md
+
+# build output
+/dist/
+/debtflow
+/debtflow.exe
+*.test
+coverage.out
+
+# debtflow runtime state (ledger lives only inside a tracked repo)
+.debtflow/
