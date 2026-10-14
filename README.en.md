@@ -30,7 +30,7 @@ The figure below is the real output of `debtflow board` on a seeded repository (
   <img src="docs/demo-ledger-board.svg" alt="The debtflow board demo, three terminal panels. Panel one: debtflow init imports three unreviewed agent commits as open ledger entries, with the columns entry, age, dependent commits, touched files, blast radius and status. Panel two: a fourth agent commit lands stacked on the oldest entry; the next board read shows its interest risen (dependent commits 2 to 3, blast radius 2 to 4) and the new commit auto-imported as a fresh open entry. Panel three: after debtflow paydown, refinance and default, the final board shows paid, refinanced, open and defaulted entries at once, and git status confirms the working tree was restored clean." width="720" />
 </p>
 
-Panel two is the whole point: between the two `board` reads nothing was run, yet the oldest debt's dependent commits rose from 2 to 3 and its blast radius from 2 to 4 — as long as nobody reviews, interest keeps accruing on its own.
+Panel two is the whole point: between the two `board` reads only a plain `git commit` landed, no debtflow command ran, yet the oldest debt's dependent commits rose from 2 to 3 and its blast radius from 2 to 4 — as long as nobody reviews, interest keeps accruing on its own.
 
 ## <img src="https://cdn.jsdelivr.net/npm/@tabler/icons@3.34.1/icons/outline/scale.svg" height="22" alt="">&nbsp;Why interest-bearing debt
 

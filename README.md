@@ -30,7 +30,7 @@ Coding Agent 一天写下的代码早已超过你能评审的量：每一笔没�
   <img src="docs/demo-ledger-board.svg" alt="debtflow board 演示，共三个终端面板。面板一：debtflow init 把三笔未评审的 agent 提交登记为 open 状态的账本条目，表格列出 entry、age、dependent commits、touched files、blast radius 与 status。面板二：第四笔 agent 提交叠在最旧条目之上，下一次 board 读取显示最旧条目的利息上升（dependent commits 2→3，blast radius 2→4），同时新提交被自动导入为一条新的 open 条目。面板三：依次执行 debtflow paydown、refinance、default 之后，最终账本同时呈现 paid、refinanced、open、defaulted 四种状态，git status 显示工作树已恢复干净。" width="720" />
 </p>
 
-面板二就是这门生意本身：两次 `board` 读取之间，什么命令都没跑，最旧那笔债的 dependent commits 从 2 涨到 3、blast radius 从 2 涨到 4——只要没人评审，利息自己会长。
+面板二就是这门生意本身：两次 `board` 读取之间只落了一笔普通的 `git commit`，没跑任何 debtflow 命令，最旧那笔债的 dependent commits 从 2 涨到 3、blast radius 从 2 涨到 4——只要没人评审，利息自己会长。
 
 ## <img src="https://cdn.jsdelivr.net/npm/@tabler/icons@3.34.1/icons/outline/scale.svg" height="22" alt="">&nbsp;为什么是「带息债务」
 
