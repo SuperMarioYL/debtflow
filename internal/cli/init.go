@@ -144,7 +144,10 @@ func ensureIgnored(gitignore string) error {
 		return err
 	}
 	for _, line := range strings.Split(string(data), "\n") {
-		if trimmed := strings.TrimSpace(line); trimmed == ledgerDir || trimmed == "/"+ledgerDir {
+		// The block below writes ledgerDir+"/", but repos may already carry
+		// the bare or anchored spelling — accept all of them so repeated
+		// init never appends a duplicate.
+		if bare := strings.TrimSuffix(strings.TrimSpace(line), "/"); bare == ledgerDir || bare == "/"+ledgerDir {
 			return nil
 		}
 	}

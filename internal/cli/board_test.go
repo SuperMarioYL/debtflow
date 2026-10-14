@@ -186,6 +186,37 @@ func TestInitIsIdempotent(t *testing.T) {
 	if len(entries) != 2 {
 		t.Errorf("ledger has %d entries after re-init, want 2", len(entries))
 	}
+	// Repeated init must not append another ignore block: ensureIgnored has
+	// to recognize the `.debtflow/` line the first one wrote.
+	gitignore, err := os.ReadFile(filepath.Join(dir, ".gitignore"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := strings.Count(string(gitignore), ".debtflow"); n != 1 {
+		t.Errorf(".gitignore mentions .debtflow %d times after two inits, want 1:\n%s", n, gitignore)
+	}
+}
+
+// TestEnsureIgnoredRecognizesBothSpellings pins the dedup against every
+// spelling of the ignore line — a pre-existing one must satisfy ensureIgnored
+// just like the `.debtflow/` line it writes itself.
+func TestEnsureIgnoredRecognizesBothSpellings(t *testing.T) {
+	for _, line := range []string{".debtflow", ".debtflow/", "/.debtflow", "/.debtflow/"} {
+		path := filepath.Join(t.TempDir(), ".gitignore")
+		if err := os.WriteFile(path, []byte(line+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := ensureIgnored(path); err != nil {
+			t.Fatal(err)
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(data), "# debtflow") {
+			t.Errorf("existing line %q: ensureIgnored appended a duplicate block:\n%s", line, data)
+		}
+	}
 }
 
 func TestInitWithoutAgentCommits(t *testing.T) {
