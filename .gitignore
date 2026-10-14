@@ -21,3 +21,5 @@ coverage.out
 
 # debtflow runtime state (ledger lives only inside a tracked repo)
 .debtflow/
+.stage_*
+debtflow
