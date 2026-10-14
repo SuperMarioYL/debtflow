@@ -1,0 +1,343 @@
+{
+  "schema": 3,
+  "name": "debtflow",
+  "github": "https://github.com/SuperMarioYL/debtflow",
+  "lang": {
+    "primary": "zh",
+    "toggle": true
+  },
+  "palette": "auto",
+  "hero": {
+    "eyebrow": {
+      "zh": "面向 Coding Agent 的评审债务账本",
+      "en": "The review-debt ledger for coding agents"
+    },
+    "headline": {
+      "zh": "每一笔未评审的 agent 改动，\n都在悄悄产生利息。",
+      "en": "Every unreviewed agent change\nquietly accrues interest."
+    },
+    "sub": {
+      "zh": "Coding Agent 一天写下的代码早已超过你能评审的量：每一笔没人看过的 agent 改动都在悄悄产生利息——依赖它的提交越堆越多，影响面越滚越大。Debtflow 把这些未评审改动记成一本带息债务账本，用 paydown、refinance、default 三个动作决定每一笔债是偿还、合并重审还是回滚清零。",
+      "en": "Your coding agents now write more code in a day than you can review: every agent change nobody has looked at quietly accrues interest — dependent commits pile on top of it, its blast radius keeps growing. Debtflow records these unreviewed changes as entries in an interest-bearing debt ledger, and three verbs — paydown, refinance, default — decide whether each debt is settled by review, bundled into one review, or wiped by a rollback."
+    },
+    "href": "#quickstart",
+    "command": "go install github.com/SuperMarioYL/debtflow@latest"
+  },
+  "advantages": [
+    {
+      "title": {
+        "zh": "利息不是修辞，是三列可机器验证的数字",
+        "en": "Interest is three machine-checkable numbers, not rhetoric"
+      },
+      "body": {
+        "zh": "每次读取都从 git 图重算：DEPENDENT COMMITS 沿 first-parent 线、以 merge-base 为锚，数出叠在该改动之上直到 HEAD 的提交；TOUCHED FILES 数改动自身 diff 涉及的文件；BLAST RADIUS 数叠加提交触及的、在这笔改动文件集之外的文件。刻意没有 LLM 在环里——判定不可复现的账本没人敢信。git 是唯一事实源，账本只是可以随时从历史重建的派生状态。",
+        "en": "Every read recomputes them from the git graph: DEPENDENT COMMITS counts commits stacked along the first-parent line up to HEAD, anchored at the merge base; TOUCHED FILES counts the files in the change's own diff; BLAST RADIUS counts files those stacked commits touch beyond the change's own file set. There is deliberately no LLM in the loop — nobody trusts a ledger whose numbers are not reproducible. Git is the single source of truth; the ledger is derived state you can rebuild from history at any time."
+      },
+      "chips": ["› DEPENDENT COMMITS", "› TOUCHED FILES", "› BLAST RADIUS"]
+    },
+    {
+      "title": {
+        "zh": "没有 accrue 命令——每次读取都在计息",
+        "en": "Every read is an accrual pass"
+      },
+      "body": {
+        "zh": "board 和三个结算动词都先重算 open 条目的利息再干活，没有单独的 accrue 命令要记得跑。在记录的演示里，两次 board 之间只落了一笔普通的 git commit，最旧那笔债的 dependent commits 就从 2 涨到 3、blast radius 从 2 涨到 4，新 agent 提交也被 board 自动导入为新条目——只要没人评审，利息自己会长。",
+        "en": "board and all three settle verbs recompute open entries' interest before doing their work — there is no separate accrue command to remember. In the recorded demo, between two board reads only a plain git commit landed, yet the oldest debt's dependent commits rose from 2 to 3 and its blast radius from 2 to 4, and the new agent commit was auto-imported as a fresh entry. As long as nobody reviews, interest keeps accruing on its own."
+      },
+      "chips": ["› dependent commits 2→3", "› blast radius 2→4", "› auto-import"]
+    },
+    {
+      "title": {
+        "zh": "savepoint ref 让 default 干脆利落",
+        "en": "Savepoint refs make default a clean wipe"
+      },
+      "body": {
+        "zh": "每笔债登记时打一个 ref（refs/debtflow/<id>），指向改动前的那棵树。default 恢复整棵 savepoint 树并提交——不是区间 revert（区间回滚会漏掉区间起点）；这笔债连同叠在它上面的提交一起清零。记录的演示收尾时 git status 输出为空，工作树完好如初。",
+        "en": "Registering a debt writes a ref (refs/debtflow/<id>) pointing at the tree immediately before the change. default restores that whole savepoint tree and commits it — not a range revert, which would skip the range start — wiping the debt along with everything stacked on it. The recorded run ends with an empty git status: the working tree is exactly as it started."
+      },
+      "chips": ["› refs/debtflow/<id>", "› whole-tree restore", "› clean working tree"]
+    },
+    {
+      "title": {
+        "zh": "一个二进制，一本追加式账本",
+        "en": "One binary, one append-only ledger"
+      },
+      "body": {
+        "zh": "账本固定在本地 .debtflow/ledger.jsonl（自动写入 .gitignore）：每行一笔，不删除、不重排，状态变化以事件形式追加——imported / accrued / paid / refinanced / defaulted；写文件走临时文件 + rename，崩溃不会撕坏行。整个产品就是一个 Go 二进制，无守护进程、无网络依赖，唯一的外部依赖是 git 本身。",
+        "en": "The ledger lives in a local .debtflow/ledger.jsonl (auto-added to .gitignore): one line per entry, never deleted or reordered, state changes appended as events — imported / accrued / paid / refinanced / defaulted. Writes go through a temp file and a rename so a crash cannot tear a line. The whole product is a single Go binary — no daemon, no network dependency, and exactly one external dependency: git itself."
+      },
+      "chips": ["› .debtflow/ledger.jsonl", "› no daemon · no network"]
+    }
+  ],
+  "demo": {
+    "title": {
+      "zh": "真实命令，真实输出",
+      "en": "Real commands, real output"
+    },
+    "note": {
+      "zh": "以下命令与输出逐字取自 debtflow v0.1.0 的完整运行记录（docs/demo-results.json，2026-10-14，go1.24.1 darwin/arm64）；种子仓库为合成数据，examples/seed-demo-repo.sh 可复现同构仓库。",
+      "en": "The commands and output below are verbatim from the recorded end-to-end run of debtflow v0.1.0 (docs/demo-results.json, 2026-10-14, go1.24.1 darwin/arm64); the seed repository is synthetic data — examples/seed-demo-repo.sh rebuilds the same repository shape."
+    },
+    "source": "https://github.com/SuperMarioYL/debtflow/blob/main/docs/demo-results.json",
+    "steps": [
+      {
+        "label": {
+          "zh": "登记债务",
+          "en": "Register the debt"
+        },
+        "body": {
+          "zh": "debtflow init 扫描仓库里未入账的 agent 提交，把三笔 agent 提交逐笔记为 open 状态的账本条目，每笔附一个指向改动前状态的 savepoint ref。",
+          "en": "debtflow init scans the repo for untracked agent commits and records the three agent commits as open ledger entries, each with a savepoint ref pointing at the pre-change tree."
+        },
+        "command": "debtflow init",
+        "output": "Imported 3 agent commit(s) as debt entries (0 already tracked).",
+        "image": "/assets/demo-init-light.svg",
+        "imageDark": "/assets/demo-init-dark.svg"
+      },
+      {
+        "label": {
+          "zh": "读账本",
+          "en": "Read the ledger"
+        },
+        "body": {
+          "zh": "debtflow board 打印账本：三笔 open 的债，最旧的排最前，每笔带着账龄和三列利息。",
+          "en": "debtflow board prints the ledger: three open debts, oldest first, each with its age and three interest columns."
+        },
+        "command": "debtflow board",
+        "output": "╭──────────────┬─────┬───────────────────┬───────────────┬──────────────┬────────╮\n│ ENTRY        │ AGE │ DEPENDENT COMMITS │ TOUCHED FILES │ BLAST RADIUS │ STATUS │\n├──────────────┼─────┼───────────────────┼───────────────┼──────────────┼────────┤\n│ ea80b317137b │ 2d  │                 2 │             4 │            2 │ open   │\n│ 5c4cce760a41 │ 1d  │                 1 │             2 │            3 │ open   │\n│ 537d8750bd73 │ 18h │                 0 │             3 │            0 │ open   │\n╰──────────────┴─────┴───────────────────┴───────────────┴──────────────┴────────╯",
+        "image": "/assets/demo-board-light.svg",
+        "imageDark": "/assets/demo-board-dark.svg"
+      },
+      {
+        "label": {
+          "zh": "利息自己会涨",
+          "en": "Interest rises on its own"
+        },
+        "body": {
+          "zh": "两次 board 之间只落了一笔普通的 git commit（d5581a8db90c，叠在最旧条目之上），没跑任何 debtflow 命令：最旧那笔的 dependent commits 2→3、blast radius 2→4，新提交也被自动导入为新条目。",
+          "en": "Between the two board reads only a plain git commit landed (d5581a8db90c, stacked on the oldest entry) — no debtflow command ran: the oldest debt's dependent commits rose 2→3 and its blast radius 2→4, and the new commit was auto-imported as a fresh entry."
+        },
+        "command": "debtflow board",
+        "output": "Auto-imported 1 new agent commit(s) as debt entries.\n╭──────────────┬─────┬───────────────────┬───────────────┬──────────────┬────────╮\n│ ENTRY        │ AGE │ DEPENDENT COMMITS │ TOUCHED FILES │ BLAST RADIUS │ STATUS │\n├──────────────┼─────┼───────────────────┼───────────────┼──────────────┼────────┤\n│ ea80b317137b │ 2d  │                 3 │             4 │            4 │ open   │\n│ 5c4cce760a41 │ 1d  │                 2 │             2 │            5 │ open   │\n│ 537d8750bd73 │ 18h │                 1 │             3 │            3 │ open   │\n│ d5581a8db90c │ 1h  │                 0 │             3 │            0 │ open   │\n╰──────────────┴─────┴───────────────────┴───────────────┴──────────────┴────────╯",
+        "image": "/assets/demo-accrue-light.svg",
+        "imageDark": "/assets/demo-accrue-dark.svg"
+      },
+      {
+        "label": {
+          "zh": "还清一笔",
+          "en": "Pay one down"
+        },
+        "body": {
+          "zh": "评审通过，paydown 把这笔债标记为 paid，利息冻结在当前读数。",
+          "en": "Reviewed and cleared — paydown marks the entry paid and freezes its interest at the current reading."
+        },
+        "command": "debtflow paydown ea80b317137b",
+        "output": "Entry ea80b317137b marked paid — review debt cleared.",
+        "image": "/assets/demo-paydown-light.svg",
+        "imageDark": "/assets/demo-paydown-dark.svg"
+      },
+      {
+        "label": {
+          "zh": "合并重审",
+          "en": "Bundle two into one"
+        },
+        "body": {
+          "zh": "refinance 把两笔 open 的债并成一次评审：两笔旧债标记为 refinanced，新开一笔 88fc0922c3ea 覆盖两者合并范围（合并文件集 5 个文件）。",
+          "en": "refinance bundles two open debts into one review: both sources are marked refinanced and a fresh entry 88fc0922c3ea opens over their combined range (a combined file set of 5 files)."
+        },
+        "command": "debtflow refinance 5c4cce760a41 537d8750bd73",
+        "output": "Bundled 5c4cce760a41 and 537d8750bd73 into 88fc0922c3ea — one review now covers both changes.",
+        "image": "/assets/demo-refinance-light.svg",
+        "imageDark": "/assets/demo-refinance-dark.svg"
+      },
+      {
+        "label": {
+          "zh": "违约清零",
+          "en": "Default and wipe"
+        },
+        "body": {
+          "zh": "default 恢复 savepoint 记录的改动前整棵树并提交，条目标记为 defaulted；随后 git status 输出为空——工作树干净。最终账本同时呈现 paid、refinanced、open、defaulted 四种状态。",
+          "en": "default restores the recorded pre-change savepoint tree and commits it, marking the entry defaulted; the following git status printed nothing — a clean working tree. The final board shows paid, refinanced, open and defaulted entries at once."
+        },
+        "command": "debtflow default d5581a8db90c",
+        "output": "Defaulted d5581a8db90c — working tree restored to refs/debtflow/d5581a8db90c and committed.",
+        "image": "/assets/demo-default-light.svg",
+        "imageDark": "/assets/demo-default-dark.svg"
+      }
+    ]
+  },
+  "quickstart": {
+    "title": {
+      "zh": "从安装到第一本账",
+      "en": "From install to your first ledger"
+    },
+    "body": {
+      "zh": "需要 Go 1.24+，或直接下载 Release 二进制（macOS / Linux / Windows × amd64 / arm64）。debtflow 只跟本地 git 历史打交道——GitHub、Gitee、自建 GitLab 上的仓库都可以。不想拿真实仓库试？用自带的种子脚本造一个有三笔 agent 提交的仓库。",
+      "en": "Requires Go 1.24+, or grab a release binary (macOS / Linux / Windows on amd64 / arm64). debtflow only talks to local git history — any git host works: GitHub, Gitee, self-hosted GitLab, anything. Rather not try it on a real repo? The bundled seed script builds a scratch repository with three agent commits."
+    },
+    "steps": [
+      {
+        "title": {
+          "zh": "安装",
+          "en": "Install"
+        },
+        "code": "go install github.com/SuperMarioYL/debtflow@latest\n# or grab a release binary: macOS / Linux / Windows × amd64 / arm64"
+      },
+      {
+        "title": {
+          "zh": "没有现成仓库？先造一个",
+          "en": "No repo at hand? Seed one"
+        },
+        "code": "bash <(curl -fsSL https://raw.githubusercontent.com/SuperMarioYL/debtflow/main/examples/seed-demo-repo.sh)\ncd debtflow-demo-repo"
+      },
+      {
+        "title": {
+          "zh": "记债",
+          "en": "Register the debt"
+        },
+        "code": "cd your-repo\ndebtflow init\n# scans agent commits, records each entry + a savepoint ref"
+      },
+      {
+        "title": {
+          "zh": "看账本",
+          "en": "Read the ledger"
+        },
+        "code": "debtflow board\n# age + 3 interest columns, oldest debt first\n# new agent commits are auto-imported on every read"
+      },
+      {
+        "title": {
+          "zh": "清账",
+          "en": "Settle"
+        },
+        "code": "debtflow paydown <id>            # reviewed it — interest freezes\ndebtflow refinance <id1> <id2>   # bundle two changes into one review\ndebtflow default <id>            # restore the savepoint tree, wipe the debt"
+      }
+    ]
+  },
+  "limitations": [
+    {
+      "zh": "v0.1 是本地单仓库账本：.debtflow/ledger.jsonl 只存在本地（自动写入 .gitignore，永不提交），没有同步、共享视图与债务指派——团队账本服务是 v0.2 的规划项，尚未发布。",
+      "en": "v0.1 is a local single-repo ledger: .debtflow/ledger.jsonl stays local (auto-gitignored, never committed), with no sync, shared view or debt assignment — the team ledger server is a planned v0.2 item, not shipped."
+    },
+    {
+      "zh": "利息只从本地 git 历史重算：这是确定性的 git 图数学，只度量负债，不评判代码质量——判断 diff 本身，请搭配任何评审工具。",
+      "en": "Interest is recomputed from local git history only: deterministic git-graph math that measures liability, never code quality — pair it with whatever review tool judges the diff itself."
+    },
+    {
+      "zh": "agent 识别按作者名 / 邮箱 / Co-Authored-By 尾注做大小写不敏感的子串匹配（默认 claude, codex, cursor）；人类名字可能误伤（比如 Claudine），用 debtflow init --agents 收窄匹配。",
+      "en": "Agent detection is case-insensitive substring matching over the author name / email and Co-Authored-By trailers (default: claude, codex, cursor); a human name could match by accident (say, Claudine) — narrow it with debtflow init --agents."
+    },
+    {
+      "zh": "default 恢复的是整棵 savepoint 树，不是区间回滚——叠在违约条目之上的提交会一并被丢弃；对最旧的那笔债执行 default 前先想清楚。",
+      "en": "default restores the whole savepoint tree — it is not a range revert, so commits stacked on the defaulted entry are discarded along with it; think before defaulting the oldest debt."
+    }
+  ],
+  "scene": {
+    "kind": "neon-graph",
+    "fallback": "/assets/scene-dark.svg",
+    "fallbackLight": "/assets/scene-light.svg",
+    "caption": {
+      "zh": "示意场景——账本动词：init · board · paydown · refinance · default",
+      "en": "Illustrative scene — the ledger verbs: init · board · paydown · refinance · default"
+    }
+  },
+  "story": {
+    "intro": {
+      "title": {
+        "zh": "PR 队列里，看不出哪笔债在滚大",
+        "en": "In the PR queue, you cannot see which debt is compounding"
+      },
+      "body": {
+        "zh": "未评审的 agent 改动不是静止的：它在仓库里躺着的每一天，别的提交继续往上叠——依赖它的代码越写越多，它改过的文件被一再触碰，等你想看的时候，评审已经不只是原来那个 diff。问题是现有工具都把它当静止列表：PR 队列里，一条两周前被十个提交叠着的 diff，和一条昨天刚落的 diff 长得一模一样。Debtflow 换了一个记账模型——每个未评审的 agent 提交是一笔带息债务，账龄和利息摆在同一行里。",
+        "en": "An unreviewed agent change is not a static thing: every day it sits in the repo, other commits stack on top of it — more code comes to depend on it, the files it touched get touched again, and by the time you look, the review is no longer just the original diff. Existing tools model it as a static list anyway: in a PR queue, a two-week-old diff with ten commits stacked on it looks exactly like one that landed yesterday. Debtflow uses a different accounting model — every unreviewed agent commit is an interest-bearing debt, with its age and interest printed on the same row."
+      }
+    },
+    "sections": [
+      {
+        "title": {
+          "zh": "三个利息列，全部从 git 图重算",
+          "en": "Three interest columns, recomputed from the git graph"
+        },
+        "body": {
+          "zh": "init 记债时给每笔改动打 savepoint ref；此后每一次读取，board 都沿 first-parent 线、以 merge-base 为锚，重算三个数字：叠在该改动之上的提交数（DEPENDENT COMMITS）、改动自身 diff 涉及的文件数（TOUCHED FILES）、叠加提交触及的文件集之外文件数（BLAST RADIUS）。侧分支合并进来的提交不计入——利息只反映真正压在这笔改动上的东西。",
+          "en": "init writes a savepoint ref for every debt it registers; from then on, every read makes board walk the first-parent line from the merge-base anchor and recompute three numbers: commits stacked on the change (DEPENDENT COMMITS), files in the change's own diff (TOUCHED FILES), and files those stacked commits touch beyond the change's own file set (BLAST RADIUS). Commits folded in by side-branch merges do not count — interest only reflects what is really pressing on the change."
+        },
+        "image": {
+          "light": "/assets/process-light.svg",
+          "dark": "/assets/process-dark.svg",
+          "alt": {
+            "zh": "计息机制：agent 提交经 init 登记为账目并打 savepoint ref，board 每次读取从 git 图重算三列利息",
+            "en": "Accrual mechanics: an agent commit is registered by init with a savepoint ref; board recomputes the three interest columns from the git graph on every read"
+          }
+        }
+      },
+      {
+        "title": {
+          "zh": "一笔账的生命周期，一本追加式账本",
+          "en": "A debt's lifecycle on an append-only ledger"
+        },
+        "body": {
+          "zh": "每笔账以 imported 事件开始，每次读取追加 accrued 快照，最后由三个动词之一了结：paydown 冻结利息、refinance 并成一笔覆盖合并范围的新账、default 从 savepoint 恢复改动前的树并提交。账本 .debtflow/ledger.jsonl 每行一笔、只追加不重排，写入走临时文件 + rename；git 是唯一事实源，账本可以随时从历史重建。",
+          "en": "Every debt starts as an imported event, appends an accrued snapshot on every read, and is settled by one of three verbs: paydown freezes the interest, refinance opens a fresh entry over the combined range, default restores the pre-change tree from the savepoint and commits it. The ledger .debtflow/ledger.jsonl is one line per entry, append-only and never reordered; writes go through a temp file and a rename. Git is the single source of truth — the ledger can be rebuilt from history at any time."
+        },
+        "image": {
+          "light": "/assets/lifecycle-light.svg",
+          "dark": "/assets/lifecycle-dark.svg",
+          "alt": {
+            "zh": "账本生命周期：imported → accrued（每次读取）→ paid / refinanced / defaulted；追加式 JSONL 账本，savepoint 恢复后工作树干净",
+            "en": "Ledger lifecycle: imported → accrued (every read) → paid / refinanced / defaulted; append-only JSONL ledger, working tree clean after the savepoint restore"
+          }
+        }
+      }
+    ],
+    "details": [
+      {
+        "title": {
+          "zh": "让 agent 识别贴合你的团队",
+          "en": "Tune agent detection to your team"
+        },
+        "body": {
+          "zh": "识别规则是对作者名 / 邮箱 / Co-Authored-By 尾注做大小写不敏感的子串匹配，默认 claude, codex, cursor。如果团队里有人类名字会被误伤（比如 Claudine），在 init 时收窄匹配列表。",
+          "en": "Detection is case-insensitive substring matching over the author name / email and Co-Authored-By trailers, defaulting to claude, codex, cursor. If a human teammate would match by accident (say, Claudine), narrow the list at init time."
+        },
+        "code": "debtflow init --agents claude,codex,cursor-agent"
+      },
+      {
+        "title": {
+          "zh": "账本格式：一行一笔，事件追加",
+          "en": "Ledger format: one line per entry, events appended"
+        },
+        "body": {
+          "zh": "账本固定在项目根的 .debtflow/ledger.jsonl，每行一笔账，条目不删除、不重排；状态变化（imported / accrued / paid / refinanced / defaulted）以事件形式追加在条目历史里，利息字段只是这些事件的最新读数。写入走临时文件 + rename，崩溃不会撕坏行；读取若无变化则不落盘。",
+          "en": "The ledger lives at .debtflow/ledger.jsonl in the project root, one line per entry, never deleted or reordered; state changes (imported / accrued / paid / refinanced / defaulted) are appended to the entry's history as events, and the interest fields only carry the latest state those events describe. Writes go through a temp file and a rename so a crash cannot tear a line; a read that changed nothing leaves the file untouched."
+        },
+        "code": "// .debtflow/ledger.jsonl — append-only, one entry per line\n// events: imported / accrued / paid / refinanced / defaulted\n// writes: temp file + rename (a crash cannot tear a line)\n// git is the single source of truth; rebuild from history any time"
+      }
+    ]
+  },
+  "cta": {
+    "headline": {
+      "zh": "先记账，后清账。\n让利息替你催评审。",
+      "en": "Record first, settle later.\nLet the interest chase the review."
+    },
+    "sub": {
+      "zh": "v0.1 已发布：单二进制，开源免费。对团队账本服务或定价有想法，来 Discussions 说一声。",
+      "en": "v0.1 is shipped: a single binary, open source and free. Thoughts on the team ledger server or pricing? Say so in Discussions."
+    },
+    "button": {
+      "zh": "在 GitHub 上开始",
+      "en": "Get started on GitHub"
+    }
+  },
+  "footer": {
+    "tag": {
+      "zh": "单二进制 · 无守护进程 · 无网络依赖 · 计息过程没有任何 LLM",
+      "en": "Single binary · no daemon · no network dependency · no LLM anywhere in the accrual"
+    }
+  },
+  "meta": {
+    "content_version": "1",
+    "source_version": "v0.1.0",
+    "visual_profile": "neon-particle",
+    "web_factory_ref": "03e7ec8a416f868b847d13b3023bf7d1215db767"
+  }
+}

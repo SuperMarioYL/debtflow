@@ -1,0 +1,38 @@
+{
+  "mode": "auto",
+  "id": "71e656-6ae796-d5f6ac-2591e8e288e7",
+  "identity": "https://github.com/supermarioyl/debtflow",
+  "primary": "#71e656",
+  "secondary": "#6ae796",
+  "highlight": "#d5f6ac",
+  "dark": {
+    "bg": "#060c0d",
+    "panel": "#0d1717",
+    "code": "#0c1713",
+    "ink": "#f7fdee",
+    "muted": "#9bb9a8",
+    "line": "#1e3c1d",
+    "primary": "#71e656",
+    "secondary": "#6ae796",
+    "highlight": "#d5f6ac",
+    "accent": "#71e656",
+    "buttonStart": "#428532",
+    "buttonEnd": "#3d8456",
+    "buttonText": "#ffffff"
+  },
+  "light": {
+    "bg": "#fafef9",
+    "panel": "#f8fef7",
+    "code": "#f5fdf3",
+    "ink": "#172a1c",
+    "muted": "#5b7b6b",
+    "line": "#d4f7cb",
+    "primary": "#408231",
+    "secondary": "#3b8154",
+    "highlight": "#697955",
+    "accent": "#408231",
+    "buttonStart": "#428532",
+    "buttonEnd": "#3d8456",
+    "buttonText": "#ffffff"
+  }
+}

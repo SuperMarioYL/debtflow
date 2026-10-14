@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="942" viewBox="0 0 720 942" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace">
+<title>debtflow board: a review-debt ledger accruing and settling interest</title>
+<desc>Three terminal panels show the real debtflow demo run. Panel 1: debtflow init imports three unreviewed agent commits as open ledger entries with interest columns. Panel 2: a fourth agent commit lands stacked on the oldest entry; the next board read shows its interest risen (dependent commits 2 to 3, blast radius 2 to 4) and auto-imports the new commit as a fresh open row. Panel 3: paydown marks the oldest entry paid, refinance bundles two entries into one review, default restores the savepoint tree; the final board shows paid, refinanced, open and defaulted rows and the working tree is clean.</desc>
+<style>
+  .panel { fill: #f6f8fa; stroke: #d0d7de; stroke-width: 1; }
+  .bar   { fill: #eaeef2; }
+  .t     { fill: #1f2328; }
+  .dim   { fill: #59636e; }
+  .dim2  { fill: #8c959f; }
+  .grn   { fill: #1a7f37; }
+  .amb   { fill: #9a6700; }
+  .teal  { fill: #0f7f90; }
+  .red   { fill: #cf222e; }
+  .dot   { stroke: rgba(0,0,0,0.12); stroke-width: 0.5; }
+  .cap   { fill: #59636e; }
+  .ttl   { fill: #59636e; font-family: -apple-system, 'Segoe UI', sans-serif; }
+  @media (prefers-color-scheme: dark) {
+    .panel { fill: #161b22; stroke: #30363d; }
+    .bar   { fill: #1d2129; }
+    .t     { fill: #e6edf3; }
+    .dim   { fill: #9198a1; }
+    .dim2  { fill: #6e7681; }
+    .grn   { fill: #3fb950; }
+    .amb   { fill: #d29922; }
+    .teal  { fill: #39c5cf; }
+    .red   { fill: #f85149; }
+    .cap   { fill: #9198a1; }
+    .ttl   { fill: #9198a1; }
+  }
+</style>
+<rect class="panel" x="20" y="18" width="680" height="242" rx="10"/>
+<rect class="bar" x="20.5" y="18.5" width="679" height="35" rx="9.5"/>
+<rect class="bar" x="20.5" y="44" width="679" height="10"/>
+<circle cx="44" cy="36.0" r="6" fill="#ff5f57" class="dot"/>
+<circle cx="62" cy="36.0" r="6" fill="#febc2e" class="dot"/>
+<circle cx="80" cy="36.0" r="6" fill="#28c840" class="dot"/>
+<text class="ttl" x="360" y="40.0" font-size="12" text-anchor="middle">1 - register: debtflow init</text>
+<text class="t" x="40" y="78" xml:space="preserve" font-size="12"><tspan class="grn">$</tspan> debtflow init</text>
+<text class="t" x="40" y="96" xml:space="preserve" font-size="12"><tspan class="grn">Imported 3 agent commit(s) as debt entries (0 already tracked).</tspan></text>
+<text class="t" x="40" y="114" xml:space="preserve" font-size="12"><tspan class="grn">$</tspan> debtflow board</text>
+<text class="t" x="40" y="132" xml:space="preserve" font-size="12"><tspan class="dim2">╭──────────────┬─────┬───────────────────┬───────────────┬──────────────┬────────╮</tspan></text>
+<text class="t" x="40" y="150" xml:space="preserve" font-size="12"><tspan class="dim">│ ENTRY        │ AGE │ DEPENDENT COMMITS │ TOUCHED FILES │ BLAST RADIUS │ STATUS │</tspan></text>
+<text class="t" x="40" y="168" xml:space="preserve" font-size="12"><tspan class="dim2">├──────────────┼─────┼───────────────────┼───────────────┼──────────────┼────────┤</tspan></text>
+<text class="t" x="40" y="186" xml:space="preserve" font-size="12"><tspan class="dim2">│</tspan> ea80b317137b <tspan class="dim2">│</tspan> 2d  <tspan class="dim2">│</tspan>                 2 <tspan class="dim2">│</tspan>             4 <tspan class="dim2">│</tspan>            2 <tspan class="dim2">│</tspan> <tspan class="amb">open</tspan>   </text>
+<text class="t" x="40" y="204" xml:space="preserve" font-size="12"><tspan class="dim2">│</tspan> 5c4cce760a41 <tspan class="dim2">│</tspan> 1d  <tspan class="dim2">│</tspan>                 1 <tspan class="dim2">│</tspan>             2 <tspan class="dim2">│</tspan>            3 <tspan class="dim2">│</tspan> <tspan class="amb">open</tspan>   </text>
+<text class="t" x="40" y="222" xml:space="preserve" font-size="12"><tspan class="dim2">│</tspan> 537d8750bd73 <tspan class="dim2">│</tspan> 18h <tspan class="dim2">│</tspan>                 0 <tspan class="dim2">│</tspan>             3 <tspan class="dim2">│</tspan>            0 <tspan class="dim2">│</tspan> <tspan class="amb">open</tspan>   </text>
+<text class="t" x="40" y="240" xml:space="preserve" font-size="12"><tspan class="dim2">╰──────────────┴─────┴───────────────────┴───────────────┴──────────────┴────────╯</tspan></text>
+<rect class="panel" x="20" y="276" width="680" height="278" rx="10"/>
+<rect class="bar" x="20.5" y="276.5" width="679" height="35" rx="9.5"/>
+<rect class="bar" x="20.5" y="302" width="679" height="10"/>
+<circle cx="44" cy="294.0" r="6" fill="#ff5f57" class="dot"/>
+<circle cx="62" cy="294.0" r="6" fill="#febc2e" class="dot"/>
+<circle cx="80" cy="294.0" r="6" fill="#28c840" class="dot"/>
+<text class="ttl" x="360" y="298.0" font-size="12" text-anchor="middle">2 - accrue: interest rises between two reads</text>
+<text class="t" x="40" y="336" xml:space="preserve" font-size="12"><tspan class="dim2"># a fourth agent commit lands stacked on the oldest entry</tspan></text>
+<text class="t" x="40" y="354" xml:space="preserve" font-size="12"><tspan class="grn">$</tspan> git commit -m "feat: make the interest rate a constant"</text>
+<text class="t" x="40" y="372" xml:space="preserve" font-size="12"><tspan class="grn">$</tspan> debtflow board</text>
+<text class="t" x="40" y="390" xml:space="preserve" font-size="12"><tspan class="grn">Auto-imported 1 new agent commit(s) as debt entries.</tspan></text>
+<text class="t" x="40" y="408" xml:space="preserve" font-size="12"><tspan class="dim2">╭──────────────┬─────┬───────────────────┬───────────────┬──────────────┬────────╮</tspan></text>
+<text class="t" x="40" y="426" xml:space="preserve" font-size="12"><tspan class="dim">│ ENTRY        │ AGE │ DEPENDENT COMMITS │ TOUCHED FILES │ BLAST RADIUS │ STATUS │</tspan></text>
+<text class="t" x="40" y="444" xml:space="preserve" font-size="12"><tspan class="dim2">├──────────────┼─────┼───────────────────┼───────────────┼──────────────┼────────┤</tspan></text>
+<text class="t" x="40" y="462" xml:space="preserve" font-size="12"><tspan class="dim2">│</tspan> ea80b317137b <tspan class="dim2">│</tspan> 2d  <tspan class="dim2">│</tspan><tspan class="amb">                 3 </tspan><tspan class="dim2">│</tspan>             4 <tspan class="dim2">│</tspan><tspan class="amb">            4 </tspan><tspan class="dim2">│</tspan> <tspan class="amb">open</tspan>   </text>
+<text class="t" x="40" y="480" xml:space="preserve" font-size="12"><tspan class="dim2">│</tspan> 5c4cce760a41 <tspan class="dim2">│</tspan> 1d  <tspan class="dim2">│</tspan><tspan class="amb">                 2 </tspan><tspan class="dim2">│</tspan>             2 <tspan class="dim2">│</tspan><tspan class="amb">            5 </tspan><tspan class="dim2">│</tspan> <tspan class="amb">open</tspan>   </text>
+<text class="t" x="40" y="498" xml:space="preserve" font-size="12"><tspan class="dim2">│</tspan> 537d8750bd73 <tspan class="dim2">│</tspan> 18h <tspan class="dim2">│</tspan><tspan class="amb">                 1 </tspan><tspan class="dim2">│</tspan>             3 <tspan class="dim2">│</tspan><tspan class="amb">            3 </tspan><tspan class="dim2">│</tspan> <tspan class="amb">open</tspan>   </text>
+<text class="t" x="40" y="516" xml:space="preserve" font-size="12"><tspan class="dim2">│</tspan><tspan class="grn"> d5581a8db90c </tspan><tspan class="dim2">│</tspan> 1h  <tspan class="dim2">│</tspan>                 0 <tspan class="dim2">│</tspan>             3 <tspan class="dim2">│</tspan>            0 <tspan class="dim2">│</tspan> <tspan class="amb">open</tspan>   </text>
+<text class="t" x="40" y="534" xml:space="preserve" font-size="12"><tspan class="dim2">╰──────────────┴─────┴───────────────────┴───────────────┴──────────────┴────────╯</tspan></text>
+<rect class="panel" x="20" y="570" width="680" height="332" rx="10"/>
+<rect class="bar" x="20.5" y="570.5" width="679" height="35" rx="9.5"/>
+<rect class="bar" x="20.5" y="596" width="679" height="10"/>
+<circle cx="44" cy="588.0" r="6" fill="#ff5f57" class="dot"/>
+<circle cx="62" cy="588.0" r="6" fill="#febc2e" class="dot"/>
+<circle cx="80" cy="588.0" r="6" fill="#28c840" class="dot"/>
+<text class="ttl" x="360" y="592.0" font-size="12" text-anchor="middle">3 - settle: paydown, refinance, default</text>
+<text class="t" x="40" y="630" xml:space="preserve" font-size="12"><tspan class="grn">$</tspan> debtflow paydown ea80b317137b</text>
+<text class="t" x="40" y="648" xml:space="preserve" font-size="12"><tspan class="grn">$</tspan> debtflow refinance 5c4cce760a41 537d8750bd73</text>
+<text class="t" x="40" y="666" xml:space="preserve" font-size="12"><tspan class="grn">$</tspan> debtflow default d5581a8db90c</text>
+<text class="t" x="40" y="684" xml:space="preserve" font-size="12"><tspan class="grn">$</tspan> debtflow board</text>
+<text class="t" x="40" y="702" xml:space="preserve" font-size="12"><tspan class="dim2">╭──────────────┬─────┬───────────────────┬───────────────┬──────────────┬────────────╮</tspan></text>
+<text class="t" x="40" y="720" xml:space="preserve" font-size="12"><tspan class="dim">│ ENTRY        │ AGE │ DEPENDENT COMMITS │ TOUCHED FILES │ BLAST RADIUS │ STATUS     │</tspan></text>
+<text class="t" x="40" y="738" xml:space="preserve" font-size="12"><tspan class="dim2">├──────────────┼─────┼───────────────────┼───────────────┼──────────────┼────────────┤</tspan></text>
+<text class="t" x="40" y="756" xml:space="preserve" font-size="12"><tspan class="dim2">│</tspan> ea80b317137b <tspan class="dim2">│</tspan> 2d  <tspan class="dim2">│</tspan>                 3 <tspan class="dim2">│</tspan>             4 <tspan class="dim2">│</tspan>            4 <tspan class="dim2">│</tspan> <tspan class="grn">paid</tspan>       </text>
+<text class="t" x="40" y="774" xml:space="preserve" font-size="12"><tspan class="dim2">│</tspan> 5c4cce760a41 <tspan class="dim2">│</tspan> 1d  <tspan class="dim2">│</tspan>                 2 <tspan class="dim2">│</tspan>             2 <tspan class="dim2">│</tspan>            5 <tspan class="dim2">│</tspan> <tspan class="teal">refinanced</tspan> </text>
+<text class="t" x="40" y="792" xml:space="preserve" font-size="12"><tspan class="dim2">│</tspan> 88fc0922c3ea <tspan class="dim2">│</tspan> 1d  <tspan class="dim2">│</tspan>                 2 <tspan class="dim2">│</tspan>             5 <tspan class="dim2">│</tspan>            2 <tspan class="dim2">│</tspan> <tspan class="amb">open</tspan>       </text>
+<text class="t" x="40" y="810" xml:space="preserve" font-size="12"><tspan class="dim2">│</tspan> 537d8750bd73 <tspan class="dim2">│</tspan> 18h <tspan class="dim2">│</tspan>                 1 <tspan class="dim2">│</tspan>             3 <tspan class="dim2">│</tspan>            3 <tspan class="dim2">│</tspan> <tspan class="teal">refinanced</tspan> </text>
+<text class="t" x="40" y="828" xml:space="preserve" font-size="12"><tspan class="dim2">│</tspan> d5581a8db90c <tspan class="dim2">│</tspan> 1h  <tspan class="dim2">│</tspan>                 0 <tspan class="dim2">│</tspan>             3 <tspan class="dim2">│</tspan>            0 <tspan class="dim2">│</tspan> <tspan class="red">defaulted</tspan>  </text>
+<text class="t" x="40" y="846" xml:space="preserve" font-size="12"><tspan class="dim2">╰──────────────┴─────┴───────────────────┴───────────────┴──────────────┴────────────╯</tspan></text>
+<text class="t" x="40" y="864" xml:space="preserve" font-size="12"><tspan class="grn">$</tspan> git status --porcelain</text>
+<text class="t" x="40" y="882" xml:space="preserve" font-size="12"><tspan class="dim2"># (no output — the working tree is clean)</tspan></text>
+<text class="cap" x="360" y="928" font-size="12" text-anchor="middle" font-style="italic">Interest is recomputed from the git graph on every read — deterministic, no LLM in the loop.</text>
+</svg>
