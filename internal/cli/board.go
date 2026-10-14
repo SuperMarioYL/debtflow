@@ -1,12 +1,9 @@
-// Package cli implements the debtflow commands. m1 owns registering debt:
-// init imports unreviewed agent commits as ledger entries backed by
-// savepoint refs, and board prints the ledger table. The settle verbs
-// (paydown, refinance, default) land in a later stage.
+// Package cli implements the debtflow commands: init and board register and
+// display debt (board auto-imports new agent commits and accrues interest on
+// every read), and settle.go owns the three settle verbs.
 package cli
 
 import (
-	"bufio"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -17,49 +14,14 @@ import (
 	"time"
 
 	"github.com/SuperMarioYL/debtflow/internal/gitrepo"
+	"github.com/SuperMarioYL/debtflow/internal/ledger"
 	"github.com/SuperMarioYL/debtflow/internal/render"
 	"github.com/spf13/cobra"
 )
 
-// The ledger is an append-only JSONL file at .debtflow/ledger.jsonl inside
-// the tracked repo — one Entry per line, derived state over git history.
-// m1 keeps the entry model and store here; later stages lift accrual and the
-// settle verbs onto the same schema.
-const (
-	ledgerDir  = ".debtflow"
-	ledgerFile = "ledger.jsonl"
-)
-
-// Entry statuses. m1 only ever writes StatusOpen; the settle verbs own the
-// rest.
-const (
-	StatusOpen       = "open"
-	StatusPaid       = "paid"
-	StatusRefinanced = "refinanced"
-	StatusDefaulted  = "defaulted"
-)
-
-// Interest is the accrual snapshot stored with an entry. Registration starts
-// the clock: touched files come from the entry's own diff, while dependent
-// commits and blast radius stay at zero until the m2 accrual pass recounts
-// them from the git graph on every read.
-type Interest struct {
-	DependentCommits int `json:"dependent_commits"`
-	TouchedFiles     int `json:"touched_files"`
-	BlastRadius      int `json:"blast_radius"`
-}
-
-// Entry is one line of the ledger: an unreviewed agent change recorded as
-// debt.
-type Entry struct {
-	ID           string   `json:"id"`            // derived from the agent commit (gitrepo.EntryID)
-	Change       string   `json:"change"`        // agent-authored commit range, "<parent>..<hash>"
-	SavepointRef string   `json:"savepoint_ref"` // refs/debtflow/<id>, the pre-change tree; empty for a root commit
-	Status       string   `json:"status"`        // open | paid | refinanced | defaulted
-	CommitTime   string   `json:"commit_time"`   // when the change landed (RFC3339); the age column reads this
-	Files        []string `json:"files"`         // files in the entry's own diff
-	Interest     Interest `json:"interest"`
-}
+// The ledger directory inside the tracked repo. The entry model and the JSONL
+// store itself live in internal/ledger.
+const ledgerDir = ".debtflow"
 
 // NewInitCmd builds `debtflow init`: scan the repo for agent commits that are
 // not in the ledger yet, create an entry plus savepoint ref for each, and
@@ -80,8 +42,9 @@ func NewInitCmd() *cobra.Command {
 }
 
 // NewBoardCmd builds `debtflow board`: print the ledger table, oldest debt
-// first. m1 keeps the board read-only — auto-importing commits that landed
-// after the last init arrives with the m2 accrual pass.
+// first. Reading the board is the accrual pass — new agent commits are
+// auto-imported and every open entry's interest is recomputed from the git
+// graph, so interest rises between runs without a separate command.
 func NewBoardCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "board",
@@ -102,51 +65,19 @@ func runInit(out io.Writer, patterns []string) error {
 		return err
 	}
 
-	entries, err := loadLedger(repo.Root())
+	entries, err := ledger.Load(repo.Root())
 	if err != nil {
 		return err
 	}
-	tracked := make(map[string]bool, len(entries))
-	for _, e := range entries {
-		tracked[e.ID] = true
-	}
-
-	commits, err := repo.AgentCommits(patterns)
+	entries, imported, already, err := importAgentCommits(repo, entries, patterns)
 	if err != nil {
 		return err
 	}
-
-	imported, already := 0, 0
-	for _, commit := range commits {
-		id := gitrepo.EntryID(commit.Hash)
-		if tracked[id] {
-			already++
-			continue
-		}
-
-		ref := ""
-		if commit.Parent != "" {
-			if ref, err = repo.RecordSavepoint(id, commit.Parent); err != nil {
-				return err
-			}
-		}
-		change := commit.Hash
-		if commit.Parent != "" {
-			change = commit.Parent + ".." + commit.Hash
-		}
-		entry := Entry{
-			ID:           id,
-			Change:       change,
-			SavepointRef: ref,
-			Status:       StatusOpen,
-			CommitTime:   commit.Time.Format(time.RFC3339),
-			Files:        commit.Files,
-			Interest:     Interest{TouchedFiles: len(commit.Files)},
-		}
-		if err := appendLedger(repo.Root(), entry); err != nil {
-			return err
-		}
-		imported++
+	if err := ledger.Accrue(repo, entries); err != nil {
+		return err
+	}
+	if err := ledger.Save(repo.Root(), entries); err != nil {
+		return err
 	}
 
 	switch {
@@ -165,8 +96,25 @@ func runBoard(out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	entries, err := loadLedger(repo.Root())
+	if !ledger.Exists(repo.Root()) {
+		fmt.Fprintln(out, "Ledger is clean — no debt entries. Run `debtflow init` to import agent commits.")
+		return nil
+	}
+	entries, err := ledger.Load(repo.Root())
 	if err != nil {
+		return err
+	}
+	entries, imported, _, err := importAgentCommits(repo, entries, gitrepo.DefaultAgentPatterns)
+	if err != nil {
+		return err
+	}
+	if imported > 0 {
+		fmt.Fprintf(out, "Auto-imported %d new agent commit(s) as debt entries.\n", imported)
+	}
+	if err := ledger.Accrue(repo, entries); err != nil {
+		return err
+	}
+	if err := ledger.Save(repo.Root(), entries); err != nil {
 		return err
 	}
 	if len(entries) == 0 {
@@ -196,6 +144,57 @@ func runBoard(out io.Writer) error {
 	}
 	fmt.Fprintln(out, render.Board(rows))
 	return nil
+}
+
+// importAgentCommits appends a ledger entry — with a savepoint ref pointing
+// at the pre-change commit — for every agent commit not tracked yet, and
+// reports the counts. The returned slice carries the new entries so the
+// caller's accrual pass covers them; the file gets them through Append and
+// the caller's Save.
+func importAgentCommits(repo *gitrepo.Repo, entries []ledger.Entry, patterns []string) (_ []ledger.Entry, imported, already int, err error) {
+	tracked := make(map[string]bool, len(entries))
+	for _, e := range entries {
+		tracked[e.ID] = true
+	}
+
+	commits, err := repo.AgentCommits(patterns)
+	if err != nil {
+		return entries, 0, 0, err
+	}
+
+	for _, commit := range commits {
+		id := gitrepo.EntryID(commit.Hash)
+		if tracked[id] {
+			already++
+			continue
+		}
+
+		ref := ""
+		if commit.Parent != "" {
+			if ref, err = repo.RecordSavepoint(id, commit.Parent); err != nil {
+				return entries, imported, already, err
+			}
+		}
+		change := commit.Hash
+		if commit.Parent != "" {
+			change = commit.Parent + ".." + commit.Hash
+		}
+		entry := ledger.Entry{
+			ID:           id,
+			Change:       change,
+			SavepointRef: ref,
+			Status:       ledger.StatusOpen,
+			CommitTime:   commit.Time.Format(time.RFC3339),
+			Files:        commit.Files,
+			Interest:     ledger.Interest{TouchedFiles: len(commit.Files)},
+		}
+		if err := ledger.Append(repo.Root(), entry); err != nil {
+			return entries, imported, already, err
+		}
+		entries = append(entries, entry)
+		imported++
+	}
+	return entries, imported, already, nil
 }
 
 // formatAge renders a debt's age compactly: hours under a day, days beyond.
@@ -242,49 +241,4 @@ func ensureIgnored(gitignore string) error {
 	}
 	_, err = f.Write([]byte("# debtflow\n" + ledgerDir + "/\n"))
 	return err
-}
-
-// loadLedger reads the ledger file. A missing file is an empty ledger, not an
-// error — debtflow init creates it.
-func loadLedger(root string) ([]Entry, error) {
-	f, err := os.Open(filepath.Join(root, ledgerDir, ledgerFile))
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	var entries []Entry
-	sc := bufio.NewScanner(f)
-	for sc.Scan() {
-		line := strings.TrimSpace(sc.Text())
-		if line == "" {
-			continue
-		}
-		var e Entry
-		if err := json.Unmarshal([]byte(line), &e); err != nil {
-			return nil, fmt.Errorf("corrupt ledger line: %w", err)
-		}
-		entries = append(entries, e)
-	}
-	return entries, sc.Err()
-}
-
-// appendLedger appends one entry as a single JSON line.
-func appendLedger(root string, e Entry) error {
-	f, err := os.OpenFile(filepath.Join(root, ledgerDir, ledgerFile), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	line, err := json.Marshal(e)
-	if err != nil {
-		return err
-	}
-	if _, err := f.Write(append(line, '\n')); err != nil {
-		return err
-	}
-	return nil
 }

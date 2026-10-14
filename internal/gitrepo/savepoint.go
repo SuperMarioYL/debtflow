@@ -1,6 +1,7 @@
 // Package gitrepo shells out to the local git binary and owns the git-graph
 // knowledge behind the ledger: walking a repo's first-parent history,
-// detecting agent-authored commits, and recording savepoint refs.
+// detecting agent-authored commits, recording savepoint refs, and restoring
+// savepoint trees.
 //
 // Git is ground truth; the ledger is derived state that can be rebuilt from
 // history, so every fact stored in a DebtEntry originates here.
@@ -127,6 +128,116 @@ func (r *Repo) RecordSavepoint(id, preCommit string) (string, error) {
 		return "", fmt.Errorf("record savepoint %s: %w", ref, err)
 	}
 	return ref, nil
+}
+
+// MergeBase returns the best common ancestor of two commits.
+func (r *Repo) MergeBase(a, b string) (string, error) {
+	out, err := r.git("merge-base", a, b)
+	if err != nil {
+		return "", fmt.Errorf("no common ancestor for %s and %s: %w", a, b, err)
+	}
+	return strings.TrimSpace(out), nil
+}
+
+// StackedCommit is one commit stacked above a ledger entry's change.
+type StackedCommit struct {
+	Hash  string
+	Files []string // files changed relative to the commit's first parent
+}
+
+// StackedCommits returns the commits stacked on commit up to HEAD along the
+// first-parent line, anchored at the merge base of commit and HEAD. Commits
+// folded in by side-branch merges stay off the first-parent chain and do not
+// count; a plain rev-list range would count them. Newest first. For a merge
+// commit on the line, the changed files are its first-parent diff — the tree
+// the merge brought onto the line, side-branch content included.
+func (r *Repo) StackedCommits(commit string) ([]StackedCommit, error) {
+	anchor, err := r.MergeBase(commit, "HEAD")
+	if err != nil {
+		return nil, err
+	}
+	out, err := r.git("log", "--first-parent", "--format=%H%x1f%P%x1e", anchor+"..HEAD")
+	if err != nil {
+		return nil, fmt.Errorf("walk the first-parent line above %s: %w", commit, err)
+	}
+	var stacked []StackedCommit
+	for _, record := range strings.Split(out, "\x1e") {
+		record = strings.TrimSpace(record)
+		if record == "" {
+			continue
+		}
+		f := strings.Split(record, "\x1f")
+		if len(f) != 2 {
+			return nil, fmt.Errorf("unexpected git log record: %q", record)
+		}
+		files, err := r.changedFiles(f[0], firstParent(f[1]))
+		if err != nil {
+			return nil, err
+		}
+		stacked = append(stacked, StackedCommit{Hash: f[0], Files: files})
+	}
+	return stacked, nil
+}
+
+// RestoreTree points the index and working tree at the tree of source — a
+// commit-ish or tree-ish. An empty source means git's empty tree, the
+// pre-change state of a root-commit entry. Files added on top of the source
+// are removed, so the result is exactly the source tree.
+func (r *Repo) RestoreTree(source string) error {
+	if source == "" {
+		var err error
+		if source, err = r.emptyTree(); err != nil {
+			return err
+		}
+	}
+	if _, err := r.git("restore", "--source="+source, "--staged", "--worktree", ":/"); err != nil {
+		return fmt.Errorf("restore tree %s: %w", source, err)
+	}
+	return nil
+}
+
+// emptyTree materializes git's empty tree object in the repo and returns its
+// hash, so a root-commit entry (no savepoint) can restore to a pristine tree.
+func (r *Repo) emptyTree() (string, error) {
+	cmd := exec.Command("git", "mktree")
+	cmd.Dir = r.dir
+	cmd.Stdin = strings.NewReader("")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("git mktree: %w: %s", err, strings.TrimSpace(stderr.String()))
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// HasUncommittedChanges reports whether tracked files differ between HEAD,
+// the index or the working tree. Untracked files are ignored — they are the
+// user's own and a tree restore leaves them alone. It guards the destructive
+// verbs against wiping uncommitted work.
+func (r *Repo) HasUncommittedChanges() (bool, error) {
+	out, err := r.git("status", "--porcelain", "--untracked-files=no")
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(out) != "", nil
+}
+
+// CommitIfChanged commits the staged state when it differs from HEAD and
+// reports whether a commit was made. debtflow's tree restores end here: a
+// restore that matches HEAD needs no empty commit.
+func (r *Repo) CommitIfChanged(message string) (bool, error) {
+	dirty, err := r.HasUncommittedChanges()
+	if err != nil {
+		return false, err
+	}
+	if !dirty {
+		return false, nil
+	}
+	if _, err := r.git("commit", "-m", message); err != nil {
+		return false, fmt.Errorf("commit: %w", err)
+	}
+	return true, nil
 }
 
 // changedFiles lists the files a commit changes, relative to its first

@@ -19,11 +19,9 @@
 package main
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/SuperMarioYL/debtflow/internal/cli"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
 )
 
@@ -32,21 +30,16 @@ import (
 // -X main.version. Keep the default in sync with the VERSION file.
 var version = "0.1.0"
 
-// stubNotice styles the not-implemented notice printed by the milestone stubs.
-var stubNotice = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
-
 func main() {
 	if err := newRootCmd().Execute(); err != nil {
 		os.Exit(1)
 	}
 }
 
-// newRootCmd declares the full debtflow command surface so the CLI shape is
-// fixed from the first commit. Registering debt (init) and reading the board
-// live in internal/cli; accruing interest from the git graph on every read
-// (internal/ledger) and settling entries with the three verbs
-// (internal/cli/settle.go) land in later stages. Until then each settle verb
-// reports not-implemented.
+// newRootCmd declares the debtflow command surface. Registering debt (init)
+// and reading the board live in internal/cli/board.go, the settle verbs in
+// internal/cli/settle.go; the ledger and its accrual pass live in
+// internal/ledger.
 func newRootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "debtflow",
@@ -65,44 +58,9 @@ git-graph math, no model in the loop.`,
 	root.AddCommand(
 		cli.NewInitCmd(),
 		cli.NewBoardCmd(),
-		newPaydownCmd(),
-		newRefinanceCmd(),
-		newDefaultCmd(),
+		cli.NewPaydownCmd(),
+		cli.NewRefinanceCmd(),
+		cli.NewDefaultCmd(),
 	)
 	return root
-}
-
-func newPaydownCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "paydown <id>",
-		Short: "Mark a reviewed entry as paid",
-		Args:  cobra.ExactArgs(1),
-		RunE:  stubRun,
-	}
-}
-
-func newRefinanceCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "refinance <id1> <id2>",
-		Short: "Bundle entries into a single refinanced review",
-		Args:  cobra.ExactArgs(2),
-		RunE:  stubRun,
-	}
-}
-
-func newDefaultCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "default <id>",
-		Short: "Restore the entry's savepoint tree and mark it defaulted",
-		Args:  cobra.ExactArgs(1),
-		RunE:  stubRun,
-	}
-}
-
-// stubRun reports the declared surface for a command whose milestone body is
-// implemented in a later stage.
-func stubRun(cmd *cobra.Command, args []string) error {
-	fmt.Fprintln(cmd.OutOrStdout(), stubNotice.Render(
-		fmt.Sprintf("debtflow %s: not implemented in this stage", cmd.CalledAs())))
-	return nil
 }

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/SuperMarioYL/debtflow/internal/gitrepo"
+	"github.com/SuperMarioYL/debtflow/internal/ledger"
 	"github.com/spf13/cobra"
 )
 
@@ -107,20 +108,20 @@ func TestInitImportsAgentCommits(t *testing.T) {
 		t.Fatalf("init output = %q, want 2 imports", out)
 	}
 
-	entries, err := loadLedger(dir)
+	entries, err := ledger.Load(dir)
 	if err != nil {
 		t.Fatalf("load ledger: %v", err)
 	}
 	if len(entries) != 2 {
 		t.Fatalf("ledger has %d entries, want 2", len(entries))
 	}
-	byID := map[string]Entry{}
+	byID := map[string]ledger.Entry{}
 	for _, e := range entries {
 		byID[e.ID] = e
 	}
 
 	claude := byID[gitrepo.EntryID(claudeHash)]
-	if claude.Status != StatusOpen {
+	if claude.Status != ledger.StatusOpen {
 		t.Errorf("status = %q, want open", claude.Status)
 	}
 	if claude.Change != baseHash+".."+claudeHash {
@@ -132,8 +133,13 @@ func TestInitImportsAgentCommits(t *testing.T) {
 	if strings.Join(claude.Files, ",") != "claude.go,shared.go" {
 		t.Errorf("files = %q", claude.Files)
 	}
-	if claude.Interest.TouchedFiles != 2 || claude.Interest.DependentCommits != 0 {
-		t.Errorf("interest = %+v, want touched_files 2 at registration", claude.Interest)
+	// Init is an accrual read: the Codex commit stacked on the Claude entry
+	// counts as dependent interest, and codex.go lands beyond its own files.
+	if claude.Interest.TouchedFiles != 2 {
+		t.Errorf("touched_files = %d, want 2", claude.Interest.TouchedFiles)
+	}
+	if claude.Interest.DependentCommits != 1 || claude.Interest.BlastRadius != 1 {
+		t.Errorf("interest = %+v, want 1 dependent commit with blast radius 1", claude.Interest)
 	}
 
 	// The savepoint ref must point at the pre-change commit.
@@ -152,8 +158,8 @@ func TestInitImportsAgentCommits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n := strings.Count(string(gitignore), ledgerDir+"/"); n != 1 {
-		t.Errorf(".gitignore mentions %s %d times, want 1", ledgerDir, n)
+	if n := strings.Count(string(gitignore), ".debtflow/"); n != 1 {
+		t.Errorf(".gitignore mentions .debtflow %d times, want 1", n)
 	}
 }
 
@@ -166,7 +172,7 @@ func TestInitIsIdempotent(t *testing.T) {
 	if !strings.Contains(out, "No new agent commits — 2 already tracked") {
 		t.Fatalf("second init output = %q", out)
 	}
-	entries, err := loadLedger(dir)
+	entries, err := ledger.Load(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,6 +224,107 @@ func TestBoardWithoutLedger(t *testing.T) {
 	out := runCmd(t, NewBoardCmd())
 	if !strings.Contains(out, "Ledger is clean") {
 		t.Fatalf("board output = %q", out)
+	}
+}
+
+func TestBoardAccruesInterestAndAutoImports(t *testing.T) {
+	dir, _, claudeHash, _ := seedRepo(t)
+	t.Chdir(dir)
+	claudeID := gitrepo.EntryID(claudeHash)
+
+	runCmd(t, NewInitCmd())
+	runCmd(t, NewBoardCmd())
+	entries, err := ledger.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var claude ledger.Entry
+	for _, e := range entries {
+		if e.ID == claudeID {
+			claude = e
+		}
+	}
+	if claude.Interest.DependentCommits != 1 || claude.Interest.BlastRadius != 1 {
+		t.Fatalf("interest after init = %+v, want 1 dependent commit, blast radius 1", claude.Interest)
+	}
+
+	// A human commit and a Cursor agent commit stack on the debt; the board
+	// read must raise the entry's interest and import the agent commit.
+	seedCommit(t, dir, "docs: human writes docs", "", "", "2026-10-04T09:00:00+08:00",
+		map[string]string{"human.go": "package demo\n"})
+	cursorHash := seedCommit(t, dir, "feat: cursor tweaks the module",
+		"Co-Authored-By: Cursor <agent@cursor.sh>", "", "2026-10-05T09:00:00+08:00",
+		map[string]string{"cursor.go": "package demo\n"})
+
+	out := runCmd(t, NewBoardCmd())
+	if !strings.Contains(out, "Auto-imported 1 new agent commit(s)") {
+		t.Fatalf("board output = %q, want the auto-import notice", out)
+	}
+
+	entries, err = ledger.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string]ledger.Entry{}
+	for _, e := range entries {
+		byID[e.ID] = e
+	}
+	if len(entries) != 3 {
+		t.Fatalf("ledger has %d entries, want 3 with the auto-imported Cursor commit", len(entries))
+	}
+	claude = byID[claudeID]
+	// Blast radius counts the .gitignore that init wrote — the human commit
+	// records it alongside human.go — so 4 files beyond the entry's own two.
+	if claude.Interest.DependentCommits != 3 || claude.Interest.BlastRadius != 4 {
+		t.Errorf("interest after stacking = %+v, want 3 dependent commits, blast radius 4", claude.Interest)
+	}
+	cursor := byID[gitrepo.EntryID(cursorHash)]
+	if cursor.Status != ledger.StatusOpen {
+		t.Errorf("auto-imported entry status = %q, want open", cursor.Status)
+	}
+}
+
+// TestAccrualIgnoresSideBranch is the schema-smoke check: commits folded in
+// by a side-branch merge must not inflate interest, and a plain rev-list
+// range over anchor..HEAD would count them.
+func TestAccrualIgnoresSideBranch(t *testing.T) {
+	dir, _, claudeHash, codexHash := seedRepo(t)
+	t.Chdir(dir)
+	runCmd(t, NewInitCmd())
+
+	// An agent commit on a side branch, merged into main with --no-ff after
+	// another agent commit lands on main.
+	gitCmd(t, dir, "checkout", "-q", "-b", "side", codexHash)
+	seedCommit(t, dir, "feat: claude works on a branch",
+		"Co-Authored-By: Claude <noreply@anthropic.com>", "", "2026-10-04T09:00:00+08:00",
+		map[string]string{"side.go": "package demo\n"})
+	gitCmd(t, dir, "checkout", "-q", "main")
+	seedCommit(t, dir, "feat: cursor tweaks the module",
+		"Co-Authored-By: Cursor <agent@cursor.sh>", "", "2026-10-05T09:00:00+08:00",
+		map[string]string{"cursor.go": "package demo\n"})
+	gitCmd(t, dir, "merge", "-q", "--no-ff", "-m", "merge side", "side")
+
+	runCmd(t, NewBoardCmd())
+	entries, err := ledger.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 3 {
+		t.Fatalf("ledger has %d entries, want 3 — the side-branch commit must not be imported", len(entries))
+	}
+	byID := map[string]ledger.Entry{}
+	for _, e := range entries {
+		byID[e.ID] = e
+	}
+	claude := byID[gitrepo.EntryID(claudeHash)]
+	// Stacked on the Claude entry: the Codex commit, the Cursor commit and
+	// the merge commit — the side commit stays off the first-parent line.
+	if claude.Interest.DependentCommits != 3 {
+		t.Errorf("dependent_commits = %d, want 3 (side-branch commit must not count)", claude.Interest.DependentCommits)
+	}
+	codex := byID[gitrepo.EntryID(codexHash)]
+	if codex.Interest.DependentCommits != 2 {
+		t.Errorf("codex dependent_commits = %d, want 2", codex.Interest.DependentCommits)
 	}
 }
 
