@@ -1,8 +1,8 @@
-// Package ledger owns the review-debt ledger: the DebtEntry schema, the
-// append-only JSONL store at .debtflow/ledger.jsonl, and the deterministic
-// accrual pass that recomputes an open entry's interest from the git graph.
-// Git is ground truth; the ledger is derived state that can be rebuilt from
-// history.
+// Package ledger owns the review-debt ledger: the DebtEntry schema with its
+// appended history events, the append-only JSONL store at
+// .debtflow/ledger.jsonl, and the deterministic accrual pass that recomputes
+// an open entry's interest from the git graph. Git is ground truth; the
+// ledger is derived state that can be rebuilt from history.
 package ledger
 
 import (
@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/SuperMarioYL/debtflow/internal/gitrepo"
 )
@@ -44,6 +45,26 @@ type Interest struct {
 	BlastRadius      int `json:"blast_radius"`
 }
 
+// Event kinds appended to an entry's history. Registration records imported,
+// the accrual pass records accrued, and the settle verbs record the rest.
+const (
+	EventImported   = "imported"
+	EventAccrued    = "accrued"
+	EventPaid       = "paid"
+	EventRefinanced = "refinanced"
+	EventDefaulted  = "defaulted"
+)
+
+// Event is one record of an entry's history: an accrual snapshot or a verb
+// operation. Every event freezes the entry's interest as of the moment it was
+// recorded, so the history doubles as an interest audit trail.
+type Event struct {
+	Kind     string    `json:"kind"`             // imported | accrued | paid | refinanced | defaulted
+	At       time.Time `json:"at"`               // when the event was recorded
+	Interest Interest  `json:"interest"`         // interest snapshot at event time
+	Detail   string    `json:"detail,omitempty"` // verb detail, e.g. the bundle a refinanced entry joined
+}
+
 // Entry is one line of the ledger: an unreviewed agent change recorded as
 // debt.
 type Entry struct {
@@ -54,6 +75,39 @@ type Entry struct {
 	CommitTime   string   `json:"commit_time"`   // when the change landed (RFC3339); the age column reads this
 	Files        []string `json:"files"`         // files in the entry's own diff
 	Interest     Interest `json:"interest"`
+	History      []Event  `json:"history,omitempty"` // accrual snapshots + verb operations, in recorded order
+}
+
+// RecordEvent appends an event to the entry's history: the kind, the interest
+// snapshot as of now, and an optional verb detail.
+func (e *Entry) RecordEvent(kind, detail string) {
+	e.History = append(e.History, Event{
+		Kind:     kind,
+		At:       time.Now().UTC(),
+		Interest: e.Interest,
+		Detail:   detail,
+	})
+}
+
+// MarkPaid marks a reviewed entry paid and appends the paid event — a status
+// change never happens without its history event.
+func (e *Entry) MarkPaid() {
+	e.Status = StatusPaid
+	e.RecordEvent(EventPaid, "")
+}
+
+// MarkRefinanced marks an entry refinanced into the bundle with the given id
+// and appends the refinanced event naming it.
+func (e *Entry) MarkRefinanced(bundleID string) {
+	e.Status = StatusRefinanced
+	e.RecordEvent(EventRefinanced, "bundled into "+bundleID)
+}
+
+// MarkDefaulted marks an entry defaulted after its savepoint tree was
+// restored, and appends the defaulted event.
+func (e *Entry) MarkDefaulted() {
+	e.Status = StatusDefaulted
+	e.RecordEvent(EventDefaulted, "")
 }
 
 // Load reads the ledger file. A missing file is an empty ledger, not an
@@ -105,9 +159,15 @@ func Append(root string, e Entry) error {
 }
 
 // Save rewrites the ledger file with the given entries. New entries always
-// enter the ledger through Append; Save is how recomputed interest and verb
-// status changes are persisted onto the lines already there. The write goes
-// through a temp file and a rename so a crash cannot tear a line in half.
+// enter the ledger through Append; Save is how recomputed interest, appended
+// history events, and verb status changes are persisted onto the lines
+// already there. The ledger stays append-only in spirit: entries are never
+// deleted or reordered, and every state change is recorded inside the entry's
+// history as an appended event — the interest and status fields only carry
+// the latest state those events describe. A write goes through a temp file
+// and a rename so a crash cannot tear a line in half, and a pass that changed
+// nothing leaves the file untouched: reading the board does not rewrite the
+// ledger.
 func Save(root string, entries []Entry) error {
 	var buf bytes.Buffer
 	for _, e := range entries {
@@ -119,6 +179,9 @@ func Save(root string, entries []Entry) error {
 		buf.WriteByte('\n')
 	}
 	path := filepath.Join(root, ledgerDir, ledgerFile)
+	if existing, err := os.ReadFile(path); err == nil && bytes.Equal(existing, buf.Bytes()) {
+		return nil
+	}
 	if err := os.MkdirAll(filepath.Join(root, ledgerDir), 0o755); err != nil {
 		return err
 	}
@@ -151,8 +214,11 @@ func ChangeTip(change string) string {
 // first-parent line up to HEAD, anchored at the merge base so commits folded
 // in by side-branch merges do not count; the blast radius is the distinct
 // files those commits touch beyond the entry's own files. Settled entries
-// are skipped — their interest stays frozen at the last accrual. Entries are
-// updated in place; persist them with Save.
+// are skipped — their interest stays frozen at the last accrual. A snapshot
+// that moves an entry's interest is appended to its history as an accrued
+// event, so the trail records when interest moved and what it moved to;
+// unchanged reads append nothing. Entries are updated in place; persist them
+// with Save.
 func Accrue(repo *gitrepo.Repo, entries []Entry) error {
 	for i := range entries {
 		e := &entries[i]
@@ -175,11 +241,22 @@ func Accrue(repo *gitrepo.Repo, entries []Entry) error {
 				}
 			}
 		}
-		e.Interest = Interest{
+		e.accrueTo(Interest{
 			DependentCommits: len(stacked),
 			TouchedFiles:     len(e.Files),
 			BlastRadius:      len(beyond),
-		}
+		})
 	}
 	return nil
+}
+
+// accrueTo moves the entry's interest to a freshly computed snapshot,
+// appending an accrued event only when the snapshot actually moved — a read
+// that recomputed the same numbers must not grow the history.
+func (e *Entry) accrueTo(next Interest) {
+	if next == e.Interest {
+		return
+	}
+	e.Interest = next
+	e.RecordEvent(EventAccrued, "")
 }

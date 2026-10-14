@@ -188,6 +188,8 @@ func importAgentCommits(repo *gitrepo.Repo, entries []ledger.Entry, patterns []s
 			Files:        commit.Files,
 			Interest:     ledger.Interest{TouchedFiles: len(commit.Files)},
 		}
+		// Registration is the first event of the entry's history.
+		entry.RecordEvent(ledger.EventImported, "")
 		if err := ledger.Append(repo.Root(), entry); err != nil {
 			return entries, imported, already, err
 		}

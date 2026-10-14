@@ -42,6 +42,7 @@ func TestPaydownMarksEntryPaid(t *testing.T) {
 	claudeID, codexID := gitrepo.EntryID(claudeHash), gitrepo.EntryID(codexHash)
 
 	runCmd(t, NewInitCmd())
+	before := entryByID(t, dir)
 	out := runCmd(t, NewPaydownCmd(), claudeID)
 	if !strings.Contains(out, "marked paid") {
 		t.Fatalf("paydown output = %q", out)
@@ -53,6 +54,19 @@ func TestPaydownMarksEntryPaid(t *testing.T) {
 	}
 	if byID[codexID].Status != ledger.StatusOpen {
 		t.Errorf("codex status = %q, want open", byID[codexID].Status)
+	}
+	// The paydown appended a paid event to the settled entry only.
+	paidTrail := byID[claudeID].History
+	if len(paidTrail) != len(before[claudeID].History)+1 ||
+		paidTrail[len(paidTrail)-1].Kind != ledger.EventPaid {
+		t.Errorf("claude history = %+v, want one %q event appended", paidTrail, ledger.EventPaid)
+	}
+	if paidTrail[len(paidTrail)-1].Interest != byID[claudeID].Interest {
+		t.Errorf("paid event interest = %+v, want the frozen accrual %+v",
+			paidTrail[len(paidTrail)-1].Interest, byID[claudeID].Interest)
+	}
+	if len(byID[codexID].History) != len(before[codexID].History) {
+		t.Errorf("codex history grew on an unrelated paydown: %+v", byID[codexID].History)
 	}
 
 	// Settled debt is settled: re-paying errors and the interest stops
@@ -70,6 +84,11 @@ func TestPaydownMarksEntryPaid(t *testing.T) {
 	}
 	if got := byID[codexID].Interest; got.DependentCommits != 1 {
 		t.Errorf("open entry interest = %+v, want 1 dependent commit", got)
+	}
+	// The refused re-paydown and later reads must not append to the trail —
+	// a settled entry freezes its history along with its interest.
+	if got := byID[claudeID].History; len(got) != len(paidTrail) {
+		t.Errorf("claude history = %+v, want it frozen at %d events", got, len(paidTrail))
 	}
 
 	// Unknown ids fail with a clear error.
@@ -121,6 +140,17 @@ func TestRefinanceBundlesEntries(t *testing.T) {
 		}
 		if bundle.Interest.TouchedFiles != 3 || bundle.Interest.DependentCommits != 0 || bundle.Interest.BlastRadius != 0 {
 			t.Errorf("bundle interest = %+v, want 3 touched files and nothing stacked yet", bundle.Interest)
+		}
+		// The refinance appended an event to each source naming the bundle it
+		// joined, and the bundle's own trail starts with its first accrual.
+		for _, src := range []ledger.Entry{byID[claudeID], byID[codexID]} {
+			last := src.History[len(src.History)-1]
+			if last.Kind != ledger.EventRefinanced || !strings.Contains(last.Detail, bundle.ID) {
+				t.Errorf("%s history = %+v, want a %q event naming bundle %s", src.ID, src.History, ledger.EventRefinanced, bundle.ID)
+			}
+		}
+		if len(bundle.History) == 0 || bundle.History[0].Kind != ledger.EventAccrued {
+			t.Errorf("bundle history = %+v, want it to start with an %q event", bundle.History, ledger.EventAccrued)
 		}
 	})
 
@@ -196,6 +226,11 @@ func TestDefaultRestoresSavepointTree(t *testing.T) {
 	byID := entryByID(t, dir)
 	if byID[codexID].Status != ledger.StatusDefaulted {
 		t.Errorf("codex status = %q, want defaulted", byID[codexID].Status)
+	}
+	// The default appended a defaulted event as the trail's last record.
+	def := byID[codexID].History
+	if len(def) == 0 || def[len(def)-1].Kind != ledger.EventDefaulted {
+		t.Errorf("codex history = %+v, want a %q event appended", def, ledger.EventDefaulted)
 	}
 	if _, err := errRun(t, NewDefaultCmd(), codexID); err == nil {
 		t.Error("defaulting an already-defaulted entry should fail")

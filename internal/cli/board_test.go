@@ -124,6 +124,13 @@ func TestInitImportsAgentCommits(t *testing.T) {
 	if claude.Status != ledger.StatusOpen {
 		t.Errorf("status = %q, want open", claude.Status)
 	}
+	// Registration is the first event of the trail.
+	if len(claude.History) == 0 || claude.History[0].Kind != ledger.EventImported {
+		t.Errorf("claude history = %+v, want it to start with an %q event", claude.History, ledger.EventImported)
+	}
+	if claude.History[0].Interest.TouchedFiles != 2 {
+		t.Errorf("imported event interest = %+v, want the 2 touched files of the registration", claude.History[0].Interest)
+	}
 	if claude.Change != baseHash+".."+claudeHash {
 		t.Errorf("change = %q, want %s..%s", claude.Change, baseHash, claudeHash)
 	}
@@ -248,6 +255,24 @@ func TestBoardAccruesInterestAndAutoImports(t *testing.T) {
 		t.Fatalf("interest after init = %+v, want 1 dependent commit, blast radius 1", claude.Interest)
 	}
 
+	trailBefore := len(claude.History)
+
+	// An unchanged board read must not grow the history — the accrual pass
+	// only appends when a snapshot actually moves.
+	runCmd(t, NewBoardCmd())
+	entries, err = ledger.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if e.ID == claudeID {
+			claude = e
+		}
+	}
+	if got := len(claude.History); got != trailBefore {
+		t.Errorf("unchanged board read grew the history from %d to %d events", trailBefore, got)
+	}
+
 	// A human commit and a Cursor agent commit stack on the debt; the board
 	// read must raise the entry's interest and import the agent commit.
 	seedCommit(t, dir, "docs: human writes docs", "", "", "2026-10-04T09:00:00+08:00",
@@ -278,9 +303,17 @@ func TestBoardAccruesInterestAndAutoImports(t *testing.T) {
 	if claude.Interest.DependentCommits != 3 || claude.Interest.BlastRadius != 4 {
 		t.Errorf("interest after stacking = %+v, want 3 dependent commits, blast radius 4", claude.Interest)
 	}
+	// The moved snapshot earned an accrued event; the auto-imported entry's
+	// trail starts at its registration.
+	if got := len(claude.History); got != trailBefore+1 || claude.History[got-1].Kind != ledger.EventAccrued {
+		t.Errorf("claude history = %+v, want one %q event appended by the rise", claude.History, ledger.EventAccrued)
+	}
 	cursor := byID[gitrepo.EntryID(cursorHash)]
 	if cursor.Status != ledger.StatusOpen {
 		t.Errorf("auto-imported entry status = %q, want open", cursor.Status)
+	}
+	if len(cursor.History) == 0 || cursor.History[0].Kind != ledger.EventImported {
+		t.Errorf("cursor history = %+v, want it to start with an %q event", cursor.History, ledger.EventImported)
 	}
 }
 

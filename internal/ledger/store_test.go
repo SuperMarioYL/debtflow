@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestLoadAppendSaveRoundTrip(t *testing.T) {
@@ -68,6 +69,143 @@ func TestLoadAppendSaveRoundTrip(t *testing.T) {
 	}
 	if !reflect.DeepEqual(again[1], second) {
 		t.Errorf("Save clobbered an untouched entry: %+v", again[1])
+	}
+}
+
+// An entry's history must survive the JSONL round trip byte for byte — the
+// trail is the audit record, not derived state.
+func TestEventHistoryRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	at := time.Date(2026, 10, 14, 9, 0, 0, 0, time.UTC)
+	entry := Entry{
+		ID: "cccc55556666", Change: "h2..h3", Status: StatusOpen,
+		CommitTime: "2026-10-03T09:00:00+08:00", Files: []string{"d.go"},
+		Interest: Interest{DependentCommits: 1, TouchedFiles: 1, BlastRadius: 2},
+		History: []Event{
+			{Kind: EventImported, At: at, Interest: Interest{TouchedFiles: 1}},
+			{Kind: EventAccrued, At: at.Add(time.Minute),
+				Interest: Interest{DependentCommits: 1, TouchedFiles: 1, BlastRadius: 2}},
+		},
+	}
+	if err := Append(dir, entry); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(loaded[0], entry) {
+		t.Errorf("round trip lost history:\n got %+v\nwant %+v", loaded[0], entry)
+	}
+	// Re-saving the loaded entry must reproduce the identical line — a read
+	// that adds nothing must not change the file.
+	if err := Save(dir, loaded); err != nil {
+		t.Fatal(err)
+	}
+	again, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(again[0], entry) {
+		t.Errorf("Save rewrote the history line:\n got %+v\nwant %+v", again[0], entry)
+	}
+}
+
+// The Mark* transitions pair every status change with its appended event, and
+// each event freezes the interest as of the moment it was recorded.
+func TestVerbEventsPairWithStatus(t *testing.T) {
+	e := Entry{
+		ID: "dddd77778888", Status: StatusOpen,
+		Interest: Interest{DependentCommits: 2, TouchedFiles: 3, BlastRadius: 1},
+	}
+	e.RecordEvent(EventImported, "")
+	if e.Status != StatusOpen || len(e.History) != 1 {
+		t.Fatalf("after RecordEvent: status %q, history %d events", e.Status, len(e.History))
+	}
+	if got := e.History[0]; got.Kind != EventImported || got.Interest != e.Interest || got.Detail != "" {
+		t.Errorf("imported event = %+v, want kind %q with the registration interest", got, EventImported)
+	}
+
+	e.MarkPaid()
+	if e.Status != StatusPaid || len(e.History) != 2 || e.History[1].Kind != EventPaid {
+		t.Errorf("after MarkPaid: status %q, history %+v", e.Status, e.History)
+	}
+	if got := e.History[1]; got.Interest != e.Interest {
+		t.Errorf("paid event interest = %+v, want the frozen accrual %+v", got.Interest, e.Interest)
+	}
+
+	e.MarkRefinanced("bundle000111")
+	if e.Status != StatusRefinanced || len(e.History) != 3 || e.History[2].Kind != EventRefinanced {
+		t.Errorf("after MarkRefinanced: status %q, history %+v", e.Status, e.History)
+	}
+	if got := e.History[2].Detail; !strings.Contains(got, "bundle000111") {
+		t.Errorf("refinanced event detail = %q, want it to name the bundle", got)
+	}
+
+	e.MarkDefaulted()
+	if e.Status != StatusDefaulted || len(e.History) != 4 || e.History[3].Kind != EventDefaulted {
+		t.Errorf("after MarkDefaulted: status %q, history %+v", e.Status, e.History)
+	}
+}
+
+// An accrual snapshot only earns a history event when the interest actually
+// moved — unchanged reads must not grow the trail.
+func TestAccrueToAppendsOnlyOnChange(t *testing.T) {
+	e := Entry{Interest: Interest{TouchedFiles: 2}}
+
+	e.accrueTo(Interest{TouchedFiles: 2})
+	if len(e.History) != 0 {
+		t.Errorf("unchanged accrual grew the history: %+v", e.History)
+	}
+
+	next := Interest{DependentCommits: 1, TouchedFiles: 2, BlastRadius: 3}
+	e.accrueTo(next)
+	if e.Interest != next {
+		t.Errorf("interest = %+v, want %+v", e.Interest, next)
+	}
+	if len(e.History) != 1 || e.History[0].Kind != EventAccrued || e.History[0].Interest != next {
+		t.Errorf("moved accrual must append the snapshot as an accrued event, got %+v", e.History)
+	}
+}
+
+// A Save that changes nothing must leave the ledger file untouched — reading
+// the board does not rewrite the ledger.
+func TestSaveNoopLeavesFileUntouched(t *testing.T) {
+	dir := t.TempDir()
+	if err := Append(dir, Entry{ID: "eeee99990000", Status: StatusOpen}); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, ledgerDir, ledgerFile)
+	before, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Save(dir, loaded); err != nil {
+		t.Fatal(err)
+	}
+	same, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !os.SameFile(before, same) {
+		t.Error("Save with no changes should not replace the ledger file")
+	}
+
+	loaded[0].Status = StatusPaid
+	if err := Save(dir, loaded); err != nil {
+		t.Fatal(err)
+	}
+	changed, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if os.SameFile(same, changed) {
+		t.Error("Save with changes should replace the ledger file through temp+rename")
 	}
 }
 

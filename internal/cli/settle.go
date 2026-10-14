@@ -99,7 +99,7 @@ func runPaydown(out io.Writer, id string) error {
 	if e.Status != ledger.StatusOpen {
 		return fmt.Errorf("entry %s is %s — only open entries can be paid down", id, e.Status)
 	}
-	e.Status = ledger.StatusPaid
+	e.MarkPaid()
 	if err := ledger.Save(repo.Root(), entries); err != nil {
 		return err
 	}
@@ -152,8 +152,8 @@ func runRefinance(out io.Writer, id1, id2 string) error {
 	}
 	bundle = accrueBundle[0]
 
-	older.Status = ledger.StatusRefinanced
-	newer.Status = ledger.StatusRefinanced
+	older.MarkRefinanced(bundle.ID)
+	newer.MarkRefinanced(bundle.ID)
 	// The bundle enters the append-only log through Append and joins the
 	// in-memory entries so the Save below persists it alongside the
 	// refinanced sources.
@@ -203,7 +203,7 @@ func runDefault(out io.Writer, id string) error {
 		return err
 	}
 
-	e.Status = ledger.StatusDefaulted
+	e.MarkDefaulted()
 	if err := ledger.Save(repo.Root(), entries); err != nil {
 		return err
 	}
