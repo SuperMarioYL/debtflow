@@ -18,7 +18,7 @@ Coding Agent 一天写下的代码早已超过你能评审的量：每一笔没�
 
 单二进制 · 无守护进程 · 无网络依赖 · 计息过程没有任何 LLM
 
-[演示](#-演示) · [快速开始](#-快速开始) · [命令](#-命令) · [付费](#-付费) · [路线图](#-路线图)
+[演示](#演示) · [快速开始](#快速开始) · [命令](#命令) · [付费](#付费) · [路线图](#路线图)
 
 </div>
 
@@ -174,6 +174,6 @@ v0.2 规划中的**团队账本服务**把本地账本升级成团队共享视�
 ## <img src="https://cdn.jsdelivr.net/npm/@tabler/icons@3.34.1/icons/outline/rocket.svg" height="22" alt="">&nbsp;路线图
 
 - [x] **v0.1（当前）** — `init` / `board` / `paydown` / `refinance` / `default`；savepoint refs；每次读取从 git 图重算利息；追加式 JSONL 账本
-- [ ] **v0.2** — 团队账本服务：共享账本、债务指派、merge-gate hook；托管付费层（见 [付费](#-付费)）
+- [ ] **v0.2** — 团队账本服务：共享账本、债务指派、merge-gate hook；托管付费层（见 [付费](#付费)）
 
 <p align="center"><sub><a href="./LICENSE">MIT</a> © 2026 SuperMarioYL</sub></p>

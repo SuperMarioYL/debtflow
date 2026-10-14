@@ -18,7 +18,7 @@ Your coding agents now write more code in a day than you can review: every agent
 
 Single binary · no daemon · no network dependency · no LLM anywhere in the accrual
 
-[Demo](#-demo) · [Quickstart](#-quickstart) · [Commands](#-commands) · [Pricing](#-pricing) · [Roadmap](#-roadmap)
+[Demo](#demo) · [Quickstart](#quickstart) · [Commands](#commands) · [Pricing](#pricing) · [Roadmap](#roadmap)
 
 </div>
 
@@ -174,6 +174,6 @@ The path: let the solo CLI earn its place inside a team first, then open a 14-da
 ## <img src="https://cdn.jsdelivr.net/npm/@tabler/icons@3.34.1/icons/outline/rocket.svg" height="22" alt="">&nbsp;Roadmap
 
 - [x] **v0.1 (current)** — `init` / `board` / `paydown` / `refinance` / `default`; savepoint refs; interest recomputed from the git graph on every read; append-only JSONL ledger
-- [ ] **v0.2** — team ledger server: shared ledger, debt assignment, merge-gate hook; hosted paid tier (see [Pricing](#-pricing))
+- [ ] **v0.2** — team ledger server: shared ledger, debt assignment, merge-gate hook; hosted paid tier (see [Pricing](#pricing))
 
 <p align="center"><sub><a href="./LICENSE">MIT</a> © 2026 SuperMarioYL</sub></p>
