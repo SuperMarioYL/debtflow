@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/SuperMarioYL/debtflow/internal/cli"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
 )
@@ -41,11 +42,11 @@ func main() {
 }
 
 // newRootCmd declares the full debtflow command surface so the CLI shape is
-// fixed from the first commit. The milestone bodies land in internal/ in
-// later stages: registering unreviewed agent commits (internal/cli/init.go),
-// accruing interest from the git graph on every read (internal/ledger), and
-// settling entries with the three verbs (internal/cli/settle.go). Until then
-// each command reports not-implemented.
+// fixed from the first commit. Registering debt (init) and reading the board
+// live in internal/cli; accruing interest from the git graph on every read
+// (internal/ledger) and settling entries with the three verbs
+// (internal/cli/settle.go) land in later stages. Until then each settle verb
+// reports not-implemented.
 func newRootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "debtflow",
@@ -62,31 +63,13 @@ git-graph math, no model in the loop.`,
 	}
 	root.SetVersionTemplate("debtflow {{.Version}}\n")
 	root.AddCommand(
-		newInitCmd(),
-		newBoardCmd(),
+		cli.NewInitCmd(),
+		cli.NewBoardCmd(),
 		newPaydownCmd(),
 		newRefinanceCmd(),
 		newDefaultCmd(),
 	)
 	return root
-}
-
-func newInitCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "init",
-		Short: "Import unreviewed agent commits as ledger entries with savepoint refs",
-		Args:  cobra.NoArgs,
-		RunE:  stubRun,
-	}
-}
-
-func newBoardCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "board",
-		Short: "Print the ledger table with each entry's accrued interest",
-		Args:  cobra.NoArgs,
-		RunE:  stubRun,
-	}
 }
 
 func newPaydownCmd() *cobra.Command {
