@@ -137,13 +137,17 @@ func runRefinance(out io.Writer, id1, id2 string) error {
 	if err != nil {
 		return err
 	}
+	files, err := bundleFiles(repo, older, newer)
+	if err != nil {
+		return err
+	}
 	bundle := ledger.Entry{
 		ID:           bundleID(older.ID, newer.ID),
 		Change:       bundleChange(older, newer),
 		SavepointRef: older.SavepointRef,
 		Status:       ledger.StatusOpen,
 		CommitTime:   older.CommitTime,
-		Files:        unionFiles(older.Files, newer.Files),
+		Files:        files,
 	}
 	// Accrue works on a copy inside the slice; read the interest back.
 	accrueBundle := []ledger.Entry{bundle}
@@ -241,6 +245,19 @@ func bundleChange(older, newer *ledger.Entry) string {
 		return parent + ".." + ledger.ChangeTip(newer.Change)
 	}
 	return ledger.ChangeTip(newer.Change)
+}
+
+// bundleFiles is the file set the bundle's review covers: everything that
+// differs between the older entry's range start and the newer entry's tip, so
+// files changed by non-entry commits inside the range belong to the review
+// instead of counting as blast radius beyond it. A root-commit anchor has no
+// range start, so the two entries' own files are the best set available.
+func bundleFiles(repo *gitrepo.Repo, older, newer *ledger.Entry) ([]string, error) {
+	parent, _, ok := strings.Cut(older.Change, "..")
+	if !ok {
+		return unionFiles(older.Files, newer.Files), nil
+	}
+	return repo.FilesChangedBetween(parent, ledger.ChangeTip(newer.Change))
 }
 
 // bundleID derives a stable id for a refinanced bundle from the two source

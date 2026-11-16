@@ -137,31 +137,48 @@ func (r *Repo) MergeBase(a, b string) (string, error) {
 }
 
 // changedFiles lists the files a commit changes, relative to its first
-// parent. A root commit diffs against the empty tree.
+// parent. A root commit diffs against the empty tree. The paths are read from
+// git's NUL-separated --name-only output: the line-oriented --name-status form
+// puts renamed files on one line as "R100\told\tnew" and quotes non-ASCII paths
+// with octal escapes, either of which would store a path the entry does not
+// actually own.
 func (r *Repo) changedFiles(hash, parent string) ([]string, error) {
 	var (
 		out string
 		err error
 	)
 	if parent == "" {
-		out, err = r.git("diff-tree", "--root", "--no-commit-id", "--name-status", "-r", hash)
+		out, err = r.git("diff-tree", "--root", "--no-commit-id", "--name-only", "-z", "-r", hash)
 	} else {
-		out, err = r.git("diff", "--name-status", "-r", parent, hash)
+		out, err = r.git("diff", "--name-only", "-z", parent, hash)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("diff %s: %w", hash, err)
 	}
-	var files []string
-	for _, line := range strings.Split(out, "\n") {
-		if strings.TrimSpace(line) == "" {
-			continue
-		}
-		// "M\tpath" — the status letter precedes a tab; keep the path only.
-		if _, path, ok := strings.Cut(line, "\t"); ok {
-			files = append(files, path)
+	return nulSeparatedPaths(out), nil
+}
+
+// FilesChangedBetween lists the files that differ between two commits — the
+// file set of a review range, such as the range a refinanced bundle covers.
+func (r *Repo) FilesChangedBetween(from, to string) ([]string, error) {
+	out, err := r.git("diff", "--name-only", "-z", from, to)
+	if err != nil {
+		return nil, fmt.Errorf("diff %s..%s: %w", from, to, err)
+	}
+	return nulSeparatedPaths(out), nil
+}
+
+// nulSeparatedPaths splits git's -z path output, which is the only form that
+// keeps paths verbatim: a rename reports its destination as a single path and
+// non-ASCII names are not quoted.
+func nulSeparatedPaths(out string) []string {
+	var paths []string
+	for _, path := range strings.Split(out, "\x00") {
+		if path != "" {
+			paths = append(paths, path)
 		}
 	}
-	return files, nil
+	return paths
 }
 
 // isAgentCommit reports whether an author or a Co-Authored-By trailer matches

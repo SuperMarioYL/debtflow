@@ -124,10 +124,12 @@ Agent detection is case-insensitive substring matching over the author name / em
 debtflow init --agents claude,codex,cursor-agent
 ```
 
+The narrowed list is remembered in `.debtflow/config.json`, so `debtflow board`'s auto-import and later `debtflow init` runs keep using it; an init without `--agents` does not quietly widen the list back to the defaults.
+
 Two known edges, worth knowing before you use the verbs:
 
 - `default` restores the **whole savepoint tree** — it is not a range revert, so commits stacked on top of the defaulted entry are discarded along with it. That is the point (stop the bleeding), but think before defaulting the oldest debt.
-- The ledger lives in a local `.debtflow/ledger.jsonl` (auto-added to .gitignore); v0.1 has no sync or shared view — that is what the v0.2 team ledger server is for.
+- The ledger lives in a local `.debtflow/ledger.jsonl` (auto-added to .gitignore); v0.2 still has no sync or shared view — that is what the v0.3 team ledger server is for.
 
 ## <img src="https://cdn.jsdelivr.net/npm/@tabler/icons@3.34.1/icons/outline/components.svg" height="22" alt="">&nbsp;How it works
 
@@ -160,9 +162,9 @@ You could write one — the accrual logic is deterministic by design. What Debtf
 
 The solo CLI is open source and free; the ledger lives in your own repository. The team problem is that the ledger is not on one page — who owes the most debt, whether the team's review liability grew this week — a local file cannot answer that.
 
-The **team ledger server** planned for v0.2 upgrades the local ledger into a shared team view:
+The **team ledger server** planned for v0.3 upgrades the local ledger into a shared team view:
 
-| | Solo CLI (v0.1, shipped) | Team ledger server (v0.2, planned) |
+| | Solo CLI (v0.1–v0.2, shipped) | Team ledger server (v0.3, planned) |
 |---|---|---|
 | Shape | Open source single binary | Hosted service (self-hosted edition open source and free) |
 | Ledger | Local `.debtflow/ledger.jsonl` | Shared team ledger |
@@ -173,7 +175,8 @@ The path: let the solo CLI earn its place inside a team first, then open a 14-da
 
 ## <img src="https://cdn.jsdelivr.net/npm/@tabler/icons@3.34.1/icons/outline/rocket.svg" height="22" alt="">&nbsp;Roadmap
 
-- [x] **v0.1 (current)** — `init` / `board` / `paydown` / `refinance` / `default`; savepoint refs; interest recomputed from the git graph on every read; append-only JSONL ledger
-- [ ] **v0.2** — team ledger server: shared ledger, debt assignment, merge-gate hook; hosted paid tier (see [Pricing](#pricing))
+- [x] **v0.1** — `init` / `board` / `paydown` / `refinance` / `default`; savepoint refs; interest recomputed from the git graph on every read; append-only JSONL ledger
+- [x] **v0.2 (current)** — reliability for the local ledger: git file-set parsing (renames, non-ASCII paths), `--agents` narrowing applied across commands, age ordering across UTC offsets, refinance interest over the bundled range
+- [ ] **v0.3** — team ledger server: shared ledger, debt assignment, merge-gate hook; hosted paid tier (see [Pricing](#pricing))
 
 <p align="center"><sub><a href="./LICENSE">MIT</a> © 2026 SuperMarioYL</sub></p>

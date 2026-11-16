@@ -46,7 +46,11 @@ func runBoard(out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	entries, imported, _, err := importAgentCommits(repo, entries, gitrepo.DefaultAgentPatterns)
+	patterns, err := agentPatterns(repo.Root(), nil)
+	if err != nil {
+		return err
+	}
+	entries, imported, _, err := importAgentCommits(repo, entries, patterns)
 	if err != nil {
 		return err
 	}
@@ -64,28 +68,43 @@ func runBoard(out io.Writer) error {
 		return nil
 	}
 
-	sort.SliceStable(entries, func(i, j int) bool {
-		return entries[i].CommitTime < entries[j].CommitTime // oldest debt first
-	})
-
+	// Oldest debt first. Compare the parsed instant, not the CommitTime text:
+	// commits carry their own UTC offset, so lexicographic order reverses
+	// entries from different timezones.
 	now := time.Now()
-	rows := make([]render.BoardRow, 0, len(entries))
+	dated := make([]datedRow, 0, len(entries))
 	for _, e := range entries {
 		landed, err := time.Parse(time.RFC3339, e.CommitTime)
 		if err != nil {
 			return fmt.Errorf("entry %s: bad commit_time %q: %w", e.ID, e.CommitTime, err)
 		}
-		rows = append(rows, render.BoardRow{
-			ID:               e.ID,
-			Age:              formatAge(now.Sub(landed)),
-			DependentCommits: e.Interest.DependentCommits,
-			TouchedFiles:     e.Interest.TouchedFiles,
-			BlastRadius:      e.Interest.BlastRadius,
-			Status:           e.Status,
+		dated = append(dated, datedRow{
+			landed: landed,
+			row: render.BoardRow{
+				ID:               e.ID,
+				Age:              formatAge(now.Sub(landed)),
+				DependentCommits: e.Interest.DependentCommits,
+				TouchedFiles:     e.Interest.TouchedFiles,
+				BlastRadius:      e.Interest.BlastRadius,
+				Status:           e.Status,
+			},
 		})
+	}
+	sort.SliceStable(dated, func(i, j int) bool { return dated[i].landed.Before(dated[j].landed) })
+
+	rows := make([]render.BoardRow, len(dated))
+	for i, d := range dated {
+		rows[i] = d.row
 	}
 	fmt.Fprintln(out, render.Board(rows))
 	return nil
+}
+
+// datedRow pairs a display row with the instant its debt landed, so the board
+// can order oldest first without comparing formatted timestamps.
+type datedRow struct {
+	landed time.Time
+	row    render.BoardRow
 }
 
 // formatAge renders a debt's age compactly: hours under a day, days beyond.

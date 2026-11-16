@@ -75,8 +75,8 @@
       "en": "Real commands, real output"
     },
     "note": {
-      "zh": "以下命令与输出逐字取自 debtflow v0.1.0 的完整运行记录（docs/demo-results.json，2026-10-14，go1.24.1 darwin/arm64）；种子仓库为合成数据，examples/seed-demo-repo.sh 可复现同构仓库。",
-      "en": "The commands and output below are verbatim from the recorded end-to-end run of debtflow v0.1.0 (docs/demo-results.json, 2026-10-14, go1.24.1 darwin/arm64); the seed repository is synthetic data — examples/seed-demo-repo.sh rebuilds the same repository shape."
+      "zh": "以下命令与输出逐字取自 debtflow v0.1.0 的完整运行记录（docs/demo-results.json，2026-10-14，go1.24.1 darwin/arm64）；种子仓库为合成数据，examples/seed-demo-repo.sh 可复现同构仓库。v0.2.0 的修复不改变这个演示里的任何数字——该仓库没有重命名、没有混合时区提交，refinance 的范围里也没有夹入人类提交。",
+      "en": "The commands and output below are verbatim from the recorded end-to-end run of debtflow v0.1.0 (docs/demo-results.json, 2026-10-14, go1.24.1 darwin/arm64); the seed repository is synthetic data — examples/seed-demo-repo.sh rebuilds the same repository shape. The v0.2.0 fixes change none of the numbers shown: that repository has no rename, no mixed-offset commits, and no human commit interleaved in the refinanced range."
     },
     "source": "https://github.com/SuperMarioYL/debtflow/blob/main/docs/demo-results.json",
     "steps": [
@@ -215,8 +215,8 @@
   },
   "limitations": [
     {
-      "zh": "v0.1 是本地单仓库账本：.debtflow/ledger.jsonl 只存在本地（自动写入 .gitignore，永不提交），没有同步、共享视图与债务指派——团队账本服务是 v0.2 的规划项，尚未发布。",
-      "en": "v0.1 is a local single-repo ledger: .debtflow/ledger.jsonl stays local (auto-gitignored, never committed), with no sync, shared view or debt assignment — the team ledger server is a planned v0.2 item, not shipped."
+      "zh": "v0.2 是本地单仓库账本：.debtflow/ledger.jsonl 只存在本地（自动写入 .gitignore，永不提交），没有同步、共享视图与债务指派——团队账本服务是 v0.3 的规划项，尚未发布。",
+      "en": "v0.2 is a local single-repo ledger: .debtflow/ledger.jsonl stays local (auto-gitignored, never committed), with no sync, shared view or debt assignment — the team ledger server is a planned v0.3 item, not shipped."
     },
     {
       "zh": "利息只从本地 git 历史重算：这是确定性的 git 图数学，只度量负债，不评判代码质量——判断 diff 本身，请搭配任何评审工具。",
@@ -320,8 +320,8 @@
       "en": "Record first, settle later.\nLet the interest chase the review."
     },
     "sub": {
-      "zh": "v0.1 已发布：单二进制，开源免费。对团队账本服务或定价有想法，来 Discussions 说一声。",
-      "en": "v0.1 is shipped: a single binary, open source and free. Thoughts on the team ledger server or pricing? Say so in Discussions."
+      "zh": "v0.2 已发布：单二进制，开源免费，本地账本的可靠性修复。团队账本服务排在 v0.3——对服务或定价有想法，来 Discussions 说一声。",
+      "en": "v0.2 is shipped: a single binary, open source and free, with reliability fixes for the local ledger. The team ledger server is slated for v0.3 — thoughts on the service or pricing? Say so in Discussions."
     },
     "button": {
       "zh": "在 GitHub 上开始",
@@ -335,8 +335,9 @@
     }
   },
   "meta": {
-    "content_version": "1",
-    "source_version": "v0.1.0",
+    "content_version": "2",
+    "source_version": "v0.2.0",
+    "generated_at": "2026-11-17T02:45:00Z",
     "visual_profile": "neon-particle",
     "web_factory_ref": "03e7ec8a416f868b847d13b3023bf7d1215db767"
   }

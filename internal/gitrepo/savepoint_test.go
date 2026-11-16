@@ -150,6 +150,65 @@ func TestRecordSavepointPointsAtPreChangeTree(t *testing.T) {
 	}
 }
 
+func TestChangedFilesRecordsRenameDestinationOnly(t *testing.T) {
+	dir, _, _ := seedRepo(t)
+	repo, err := Open(dir)
+	if err != nil {
+		t.Fatalf("open repo: %v", err)
+	}
+
+	gitCmd(t, dir, "mv", "shared.go", "renamed.go")
+	gitCmd(t, dir, "commit", "-qm", "refactor: rename shared.go")
+	hash := strings.TrimSpace(gitCmd(t, dir, "rev-parse", "HEAD"))
+	parent := strings.TrimSpace(gitCmd(t, dir, "rev-parse", "HEAD^"))
+
+	files, err := repo.changedFiles(hash, parent)
+	if err != nil {
+		t.Fatalf("changed files: %v", err)
+	}
+	// A detected rename is one change, and the path that exists after the
+	// commit is the destination: the ledger must own that name.
+	if got := strings.Join(files, ","); got != "renamed.go" {
+		t.Errorf("rename files = %q, want renamed.go", got)
+	}
+}
+
+func TestChangedFilesKeepsNonASCIIPaths(t *testing.T) {
+	dir, _, _ := seedRepo(t)
+	repo, err := Open(dir)
+	if err != nil {
+		t.Fatalf("open repo: %v", err)
+	}
+
+	hash := seedCommit(t, dir, "docs: add a chinese path", "", "",
+		map[string]string{"docs/评审.md": "# 评审\n"})
+	parent := strings.TrimSpace(gitCmd(t, dir, "rev-parse", "HEAD^"))
+
+	files, err := repo.changedFiles(hash, parent)
+	if err != nil {
+		t.Fatalf("changed files: %v", err)
+	}
+	if got := strings.Join(files, ","); got != "docs/评审.md" {
+		t.Errorf("non-ASCII files = %q, want docs/评审.md", got)
+	}
+}
+
+func TestFilesChangedBetweenCoversRange(t *testing.T) {
+	dir, claudeHash, _ := seedRepo(t)
+	repo, err := Open(dir)
+	if err != nil {
+		t.Fatalf("open repo: %v", err)
+	}
+
+	files, err := repo.FilesChangedBetween(claudeHash+"^", claudeHash)
+	if err != nil {
+		t.Fatalf("files changed between: %v", err)
+	}
+	if got := strings.Join(files, ","); got != "claude.go,shared.go" {
+		t.Errorf("range files = %q, want claude.go,shared.go", got)
+	}
+}
+
 func TestOpenRejectsNonRepository(t *testing.T) {
 	if _, err := Open(t.TempDir()); err == nil {
 		t.Error("Open on a non-repository should fail")

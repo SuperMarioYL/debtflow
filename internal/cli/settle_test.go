@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"os"
+	"sort"
 	"strings"
 	"testing"
 
@@ -135,8 +136,10 @@ func TestRefinanceBundlesEntries(t *testing.T) {
 		if bundle.CommitTime != byID[claudeID].CommitTime {
 			t.Errorf("bundle commit_time = %q, want the older entry's %q", bundle.CommitTime, byID[claudeID].CommitTime)
 		}
-		if got := strings.Join(bundle.Files, ","); got != "claude.go,shared.go,codex.go" {
-			t.Errorf("bundle files = %q, want the union of both entries", got)
+		// The range between the older entry's parent and the newer tip is the
+		// bundle's change, and git reports its paths in path order.
+		if got := strings.Join(bundle.Files, ","); got != "claude.go,codex.go,shared.go" {
+			t.Errorf("bundle files = %q, want the files of the bundled range", got)
 		}
 		if bundle.Interest.TouchedFiles != 3 || bundle.Interest.DependentCommits != 0 || bundle.Interest.BlastRadius != 0 {
 			t.Errorf("bundle interest = %+v, want 3 touched files and nothing stacked yet", bundle.Interest)
@@ -172,11 +175,51 @@ func TestRefinanceBundlesEntries(t *testing.T) {
 	})
 }
 
+// TestRefinanceBundleCoversInterleavedFiles pins the bundle's file set: the
+// bundle covers the whole range between the two source entries, so a file
+// changed by a non-entry commit inside that range belongs to the review
+// instead of reading as blast radius beyond it.
+func TestRefinanceBundleCoversInterleavedFiles(t *testing.T) {
+	dir, _, _, _ := seedRepo(t)
+	// seedRepo leaves a human docs commit on top; add two agent entries with a
+	// human commit between them.
+	aHash := seedCommit(t, dir, "feat: claude touches the first module",
+		"Co-Authored-By: Claude <noreply@anthropic.com>", "", "2026-10-04T09:00:00+08:00",
+		map[string]string{"a1.go": "package demo\n", "a2.go": "package demo\n"})
+	seedCommit(t, dir, "docs: human writes the middle file", "", "", "2026-10-05T09:00:00+08:00",
+		map[string]string{"human_mid.go": "package demo\n"})
+	bHash := seedCommit(t, dir, "feat: codex touches the last module", "", "Codex <codex@openai.com>",
+		"2026-10-06T09:00:00+08:00", map[string]string{"b1.go": "package demo\n"})
+
+	t.Chdir(dir)
+	runCmd(t, NewInitCmd())
+	before := entryByID(t, dir)
+	runCmd(t, NewRefinanceCmd(), gitrepo.EntryID(aHash), gitrepo.EntryID(bHash))
+
+	after := entryByID(t, dir)
+	var bundle ledger.Entry
+	for id, e := range after {
+		if _, existed := before[id]; !existed {
+			bundle = e
+		}
+	}
+	if bundle.ID == "" {
+		t.Fatal("no new bundle entry after refinance")
+	}
+	files := append([]string(nil), bundle.Files...)
+	sort.Strings(files)
+	if got := strings.Join(files, ","); got != "a1.go,a2.go,b1.go,human_mid.go" {
+		t.Errorf("bundle files = %q, want the whole range including human_mid.go", got)
+	}
+	if bundle.Interest.TouchedFiles != 4 || bundle.Interest.BlastRadius != 0 {
+		t.Errorf("bundle interest = %+v, want 4 touched files and blast radius 0", bundle.Interest)
+	}
+}
+
 func TestRefinanceRejectsBadInput(t *testing.T) {
 	dir, _, claudeHash, _ := seedRepo(t)
 	t.Chdir(dir)
 	claudeID := gitrepo.EntryID(claudeHash)
-
 	runCmd(t, NewInitCmd())
 
 	if _, err := errRun(t, NewRefinanceCmd(), claudeID, claudeID); err == nil {

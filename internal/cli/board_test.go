@@ -408,3 +408,137 @@ func TestFormatAge(t *testing.T) {
 		}
 	}
 }
+
+// newRepo initializes an empty repository with a deterministic human identity.
+func newRepo(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	gitCmd(t, dir, "init", "-b", "main")
+	gitCmd(t, dir, "config", "user.name", "Human Dev")
+	gitCmd(t, dir, "config", "user.email", "human@example.com")
+	gitCmd(t, dir, "config", "commit.gpgsign", "false")
+	return dir
+}
+
+// TestBoardEntryOwnsRenamedFile pins the file set of an agent commit that
+// renames a file: the entry owns the destination path, so the next agent
+// commit editing that same file is interest on the entry, not blast radius
+// beyond it.
+func TestBoardEntryOwnsRenamedFile(t *testing.T) {
+	dir := newRepo(t)
+	seedCommit(t, dir, "chore: baseline service", "", "", "2026-10-01T09:00:00+08:00",
+		map[string]string{"svc/old_name.go": "package svc\n"})
+	gitCmd(t, dir, "mv", "svc/old_name.go", "svc/new_name.go")
+	gitCmd(t, dir, "commit", "-qm", "refactor: rename the module", "--author", "Claude <claude@anthropic.com>")
+	renameHash := strings.TrimSpace(gitCmd(t, dir, "rev-parse", "HEAD"))
+	seedCommit(t, dir, "feat: edit the renamed module", "", "Codex <codex@openai.com>",
+		"2026-10-03T09:00:00+08:00", map[string]string{"svc/new_name.go": "package svc // v2\n"})
+
+	t.Chdir(dir)
+	runCmd(t, NewInitCmd())
+	runCmd(t, NewBoardCmd())
+
+	entries, err := ledger.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var renamed ledger.Entry
+	for _, e := range entries {
+		if e.ID == gitrepo.EntryID(renameHash) {
+			renamed = e
+		}
+	}
+	if got := strings.Join(renamed.Files, ","); got != "svc/new_name.go" {
+		t.Errorf("rename entry files = %q, want svc/new_name.go", got)
+	}
+	if renamed.Interest.DependentCommits != 1 || renamed.Interest.BlastRadius != 0 {
+		t.Errorf("rename entry interest = %+v, want 1 dependent commit and blast radius 0", renamed.Interest)
+	}
+}
+
+// TestBoardHonorsPersistedAgentPatterns pins the --agents contract: narrowing
+// detection at init is repo policy, so the board's auto-import pass must not
+// re-import the commits init excluded.
+func TestBoardHonorsPersistedAgentPatterns(t *testing.T) {
+	dir := newRepo(t)
+	seedCommit(t, dir, "chore: base", "", "", "2026-10-01T09:00:00+08:00",
+		map[string]string{"base.go": "package demo\n"})
+	humanHash := seedCommit(t, dir, "docs: human reviewer commits by hand", "",
+		"Claude Reviewer <claude.reviewer@human.dev>", "2026-10-02T09:00:00+08:00",
+		map[string]string{"human.go": "package demo\n"})
+	seedCommit(t, dir, "feat: codex writes a module", "", "Codex <codex@openai.com>",
+		"2026-10-03T09:00:00+08:00", map[string]string{"codex.go": "package demo\n"})
+
+	t.Chdir(dir)
+	out := runCmd(t, NewInitCmd(), "--agents", "codex")
+	if !strings.Contains(out, "Imported 1 agent commit(s)") {
+		t.Fatalf("init output = %q, want only the codex commit imported", out)
+	}
+
+	out = runCmd(t, NewBoardCmd())
+	if strings.Contains(out, "Auto-imported") {
+		t.Errorf("board re-imported commits init narrowed out:\n%s", out)
+	}
+	entries, err := ledger.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("ledger has %d entries, want 1", len(entries))
+	}
+	for _, e := range entries {
+		if e.ID == gitrepo.EntryID(humanHash) {
+			t.Errorf("excluded commit %s was imported anyway", e.ID)
+		}
+	}
+}
+
+// TestInitWithoutAgentsFlagReusesPersistedPatterns pins the other half:
+// repeating init without the flag must keep the stored narrowing instead of
+// silently widening back to the defaults.
+func TestInitWithoutAgentsFlagReusesPersistedPatterns(t *testing.T) {
+	dir := newRepo(t)
+	seedCommit(t, dir, "chore: base", "", "", "2026-10-01T09:00:00+08:00",
+		map[string]string{"base.go": "package demo\n"})
+	seedCommit(t, dir, "docs: human reviewer commits by hand", "",
+		"Claude Reviewer <claude.reviewer@human.dev>", "2026-10-02T09:00:00+08:00",
+		map[string]string{"human.go": "package demo\n"})
+	seedCommit(t, dir, "feat: codex writes a module", "", "Codex <codex@openai.com>",
+		"2026-10-03T09:00:00+08:00", map[string]string{"codex.go": "package demo\n"})
+
+	t.Chdir(dir)
+	runCmd(t, NewInitCmd(), "--agents", "codex")
+	out := runCmd(t, NewInitCmd())
+	if !strings.Contains(out, "No new agent commits — 1 already tracked") {
+		t.Fatalf("second init output = %q, want the stored pattern list reused", out)
+	}
+	entries, err := ledger.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Errorf("ledger has %d entries after re-init, want 1", len(entries))
+	}
+}
+
+// TestBoardOrdersByInstantAcrossOffsets pins oldest-debt-first ordering when
+// commits carry different UTC offsets: text order would put the newer UTC
+// commit above an older +08:00 one.
+func TestBoardOrdersByInstantAcrossOffsets(t *testing.T) {
+	dir := newRepo(t)
+	seedCommit(t, dir, "chore: base", "", "", "2026-10-13T09:00:00+08:00",
+		map[string]string{"base.go": "package demo\n"})
+	olderHash := seedCommit(t, dir, "feat: older agent change", "", "Claude <claude@anthropic.com>",
+		"2026-10-14T09:00:00+08:00", map[string]string{"older.go": "package demo\n"})
+	newerHash := seedCommit(t, dir, "feat: newer agent change", "", "Codex <codex@openai.com>",
+		"2026-10-14T02:00:00+00:00", map[string]string{"newer.go": "package demo\n"})
+
+	t.Chdir(dir)
+	runCmd(t, NewInitCmd())
+	out := runCmd(t, NewBoardCmd())
+
+	olderID, newerID := gitrepo.EntryID(olderHash), gitrepo.EntryID(newerHash)
+	if strings.Index(out, olderID) > strings.Index(out, newerID) {
+		t.Errorf("board lists newer debt first across offsets:\n%s", out)
+	}
+}

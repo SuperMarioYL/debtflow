@@ -124,10 +124,12 @@ Agent 识别按作者名 / 邮箱 / Co-Authored-By 尾注做大小写不敏感�
 debtflow init --agents claude,codex,cursor-agent
 ```
 
+收窄结果会记在 `.debtflow/config.json`，之后 `debtflow board` 的自动入账和再跑 `debtflow init` 都沿用这份列表；不带 `--agents` 的 init 不会把列表悄悄放宽回默认值。
+
 两条已知边界，用之前该知道：
 
 - `default` 恢复的是**整棵 savepoint 树**，不是区间回滚——叠在违约条目之上的提交会一并被丢弃。这是特性（止血），但也意味着对最旧的那笔债执行 default 前先想想。
-- 账本存在本地 `.debtflow/ledger.jsonl`（自动写入 .gitignore），v0.1 没有同步与共享视图——那是 v0.2 团队账本服务要解决的事。
+- 账本存在本地 `.debtflow/ledger.jsonl`（自动写入 .gitignore），v0.2 仍然没有同步与共享视图——那是 v0.3 团队账本服务要解决的事。
 
 ## <img src="https://cdn.jsdelivr.net/npm/@tabler/icons@3.34.1/icons/outline/components.svg" height="22" alt="">&nbsp;工作原理
 
@@ -160,9 +162,9 @@ debtflow（单二进制）
 
 单机 CLI 开源免费，账本存在你自己的仓库里。团队的问题是账本不在同一页上——谁欠的债最多、整个团队的评审负债这周涨了多少，单机文件回答不了。
 
-v0.2 规划中的**团队账本服务**把本地账本升级成团队共享视图：
+v0.3 规划中的**团队账本服务**把本地账本升级成团队共享视图：
 
-| | 单机 CLI（v0.1，已发布） | 团队账本服务（v0.2，规划中） |
+| | 单机 CLI（v0.1–v0.2，已发布） | 团队账本服务（v0.3，规划中） |
 |---|---|---|
 | 形态 | 开源单二进制 | 托管服务（自托管版开源免费） |
 | 账本 | 本地 `.debtflow/ledger.jsonl` | 团队共享账本 |
@@ -173,7 +175,8 @@ v0.2 规划中的**团队账本服务**把本地账本升级成团队共享视�
 
 ## <img src="https://cdn.jsdelivr.net/npm/@tabler/icons@3.34.1/icons/outline/rocket.svg" height="22" alt="">&nbsp;路线图
 
-- [x] **v0.1（当前）** — `init` / `board` / `paydown` / `refinance` / `default`；savepoint refs；每次读取从 git 图重算利息；追加式 JSONL 账本
-- [ ] **v0.2** — 团队账本服务：共享账本、债务指派、merge-gate hook；托管付费层（见 [付费](#付费)）
+- [x] **v0.1** — `init` / `board` / `paydown` / `refinance` / `default`；savepoint refs；每次读取从 git 图重算利息；追加式 JSONL 账本
+- [x] **v0.2（当前）** — 本地账本的可靠性版本：git 文件集解析（重命名 / 中文路径）、`--agents` 收窄跨命令生效、混合时区的账龄排序、refinance 合并范围的利息口径
+- [ ] **v0.3** — 团队账本服务：共享账本、债务指派、merge-gate hook；托管付费层（见 [付费](#付费)）
 
 <p align="center"><sub><a href="./LICENSE">MIT</a> © 2026 SuperMarioYL</sub></p>

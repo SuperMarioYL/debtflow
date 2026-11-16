@@ -32,12 +32,20 @@ func NewInitCmd() *cobra.Command {
 		Short: "Import unreviewed agent commits as ledger entries with savepoint refs",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			patterns, _ := cmd.Flags().GetStringSlice("agents")
+			// A nil pattern list means "use whatever this repo already uses";
+			// an explicit --agents list becomes the repo's stored policy.
+			var patterns []string
+			if cmd.Flags().Changed("agents") {
+				var err error
+				if patterns, err = cmd.Flags().GetStringSlice("agents"); err != nil {
+					return err
+				}
+			}
 			return runInit(cmd.OutOrStdout(), patterns)
 		},
 	}
 	cmd.Flags().StringSlice("agents", gitrepo.DefaultAgentPatterns,
-		"comma-separated author / Co-Authored-By patterns marking agent commits")
+		"comma-separated author / Co-Authored-By patterns marking agent commits (remembered for later reads)")
 	return cmd
 }
 
@@ -47,6 +55,17 @@ func runInit(out io.Writer, patterns []string) error {
 		return err
 	}
 	if err := ensureLedger(repo.Root()); err != nil {
+		return err
+	}
+	// An explicit --agents list is repo-level policy: persist it so board's
+	// auto-import and later inits keep honoring the narrowing.
+	if len(patterns) > 0 {
+		if err := ledger.SaveAgentPatterns(repo.Root(), patterns); err != nil {
+			return err
+		}
+	}
+	patterns, err = agentPatterns(repo.Root(), patterns)
+	if err != nil {
 		return err
 	}
 
@@ -74,6 +93,23 @@ func runInit(out io.Writer, patterns []string) error {
 		fmt.Fprintln(out, "No agent-authored commits found on the first-parent line — nothing to record.")
 	}
 	return nil
+}
+
+// agentPatterns resolves the detection patterns a read should use: the list
+// given on this invocation, else the list an earlier `init --agents` stored,
+// else the defaults.
+func agentPatterns(root string, explicit []string) ([]string, error) {
+	if len(explicit) > 0 {
+		return explicit, nil
+	}
+	stored, err := ledger.LoadAgentPatterns(root)
+	if err != nil {
+		return nil, err
+	}
+	if len(stored) > 0 {
+		return stored, nil
+	}
+	return gitrepo.DefaultAgentPatterns, nil
 }
 
 // importAgentCommits appends a ledger entry — with a savepoint ref pointing

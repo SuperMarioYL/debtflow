@@ -12,7 +12,7 @@ import (
 // value; the release workflow injects the tagged version via -ldflags
 // -X github.com/SuperMarioYL/debtflow/internal/cli.version. Keep the default
 // in sync with the VERSION file — internal/cli/version_test.go enforces it.
-var version = "0.1.0"
+var version = "0.2.0"
 
 // Execute builds the debtflow command surface and runs it; the returned
 // error is for main to exit on.

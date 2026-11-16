@@ -21,7 +21,47 @@ import (
 const (
 	ledgerDir  = ".debtflow"
 	ledgerFile = "ledger.jsonl"
+	configFile = "config.json"
 )
+
+// Config is the repo-level ledger configuration stored beside the ledger: the
+// settings a command must reuse on later reads, currently only the agent
+// detection patterns accepted by `debtflow init --agents`.
+type Config struct {
+	AgentPatterns []string `json:"agent_patterns,omitempty"`
+}
+
+// LoadAgentPatterns returns the agent patterns persisted beside the ledger, or
+// nil when the repo never narrowed them (the caller falls back to the defaults).
+// A missing config is not an error: repos initialized before the config
+// existed, and repos where init never took --agents, keep working.
+func LoadAgentPatterns(root string) ([]string, error) {
+	data, err := os.ReadFile(filepath.Join(root, ledgerDir, configFile))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var cfg Config
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("corrupt ledger config: %w", err)
+	}
+	return cfg.AgentPatterns, nil
+}
+
+// SaveAgentPatterns persists the agent patterns so every later read honors the
+// narrowing init accepted — the board's auto-import included.
+func SaveAgentPatterns(root string, patterns []string) error {
+	if err := os.MkdirAll(filepath.Join(root, ledgerDir), 0o755); err != nil {
+		return err
+	}
+	data, err := json.Marshal(Config{AgentPatterns: patterns})
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(root, ledgerDir, configFile), data, 0o644)
+}
 
 // Load reads the ledger file. A missing file is an empty ledger, not an
 // error — debtflow init creates it.

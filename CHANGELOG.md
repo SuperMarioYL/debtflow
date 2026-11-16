@@ -4,6 +4,39 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-11-17
+
+Reliability release for the local ledger: four reproduced correctness fixes,
+no new surface. The team ledger server moves to v0.3.
+
+### Fixed
+
+- Agent commit file sets are read from git's NUL-separated `--name-only`
+  output. The previous `--name-status` parsing stored a rename as the single
+  path `old<TAB>new` and non-ASCII paths quoted with octal escapes, so an entry
+  that renamed a file did not own the new name and the next commit editing that
+  file counted as blast radius beyond the entry. Renames now record the
+  destination path, and Chinese/other non-ASCII paths are stored verbatim.
+- `debtflow init --agents` is remembered in `.debtflow/config.json`, so the
+  board's auto-import pass and later inits keep using the narrowed pattern
+  list. Previously the next `debtflow board` fell back to the default patterns
+  and re-imported exactly the commits init had excluded, which is the case the
+  documented `--agents` narrowing exists to prevent.
+- `debtflow board` orders rows by the commit instant instead of the RFC3339
+  text. Commits carry their own UTC offset, so a repo mixing agent commits from
+  CI (UTC) and a developer laptop (`+08:00`) could show the newest debt first;
+  oldest debt is now first regardless of offset.
+- A refinanced bundle's file set is the whole range between the older entry's
+  range start and the newer entry's tip, not just the union of the two source
+  entries. Files changed by non-entry commits inside the bundled range are part
+  of the review and no longer read as blast radius beyond the bundle.
+
+### Changed
+
+- The roadmap now states that v0.2 is the local-ledger reliability release; the
+  team ledger server is planned for v0.3. README (both locales) and the product
+  site carry the same statement.
+
 ## [0.1.0] - 2026-10-14
 
 First release: the complete v0.1 ledger — register, accrue, settle — in a
@@ -56,4 +89,5 @@ single binary.
 - Version lockstep: the CLI version default is pinned to the repo `VERSION`
   file by a test; goreleaser injects the tagged version at release time.
 
+[0.2.0]: https://github.com/SuperMarioYL/debtflow/releases/tag/v0.2.0
 [0.1.0]: https://github.com/SuperMarioYL/debtflow/releases/tag/v0.1.0
